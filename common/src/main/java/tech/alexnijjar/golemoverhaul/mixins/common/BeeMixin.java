@@ -5,13 +5,15 @@ import com.llamalad7.mixinextras.injector.v2.WrapWithCondition;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import net.minecraft.core.Holder;
-import net.minecraft.nbt.CompoundTag;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.Attribute;
-import net.minecraft.world.entity.animal.Bee;
+import net.minecraft.world.entity.animal.bee.Bee;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -74,7 +76,7 @@ public abstract class BeeMixin extends PathfinderMob implements AdditionalBeeDat
         method = "doHurtTarget",
         at = @At(
             value = "INVOKE",
-            target = "Lnet/minecraft/world/entity/animal/Bee;stopBeingAngry()V"
+            target = "Lnet/minecraft/world/entity/animal/bee/Bee;stopBeingAngry()V"
         )
     )
     private boolean golemoverhaul$doHurtTarget(Bee instance) {
@@ -88,7 +90,7 @@ public abstract class BeeMixin extends PathfinderMob implements AdditionalBeeDat
         method = "doHurtTarget",
         at = @At(
             value = "INVOKE",
-            target = "Lnet/minecraft/world/entity/animal/Bee;getAttributeValue(Lnet/minecraft/core/Holder;)D"
+            target = "Lnet/minecraft/world/entity/animal/bee/Bee;getAttributeValue(Lnet/minecraft/core/Holder;)D"
         )
     )
     private double golemoverhaul$doHurtTarget2(Bee instance, Holder<Attribute> holder, Operation<Double> original) {
@@ -111,17 +113,15 @@ public abstract class BeeMixin extends PathfinderMob implements AdditionalBeeDat
     }
 
     @Inject(method = "addAdditionalSaveData", at = @At("TAIL"))
-    private void golemoverhaul$addAdditionalSaveData(CompoundTag compound, CallbackInfo ci) {
+    private void golemoverhaul$addAdditionalSaveData(ValueOutput output, CallbackInfo ci) {
         if (this.golemoverhaul$owner != null) {
-            compound.putUUID("HoneyGolemOwner", this.golemoverhaul$owner);
+            output.store("HoneyGolemOwner", UUIDUtil.CODEC, this.golemoverhaul$owner);
         }
     }
 
     @Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
-    private void golemoverhaul$readAdditionalSaveData(CompoundTag compound, CallbackInfo ci) {
-        if (compound.contains("HoneyGolemOwner")) {
-            this.golemoverhaul$owner = compound.getUUID("HoneyGolemOwner");
-        }
+    private void golemoverhaul$readAdditionalSaveData(ValueInput input, CallbackInfo ci) {
+        input.read("HoneyGolemOwner", UUIDUtil.CODEC).ifPresent(owner -> this.golemoverhaul$owner = owner);
     }
 
     @Inject(method = "wantsToEnterHive", at = @At("HEAD"), cancellable = true)
@@ -133,7 +133,7 @@ public abstract class BeeMixin extends PathfinderMob implements AdditionalBeeDat
                     return;
                 }
 
-                if (level.isNight()) {
+                if (level.isDarkOutside()) {
                     cir.setReturnValue(true);
                 }
             }

@@ -1,22 +1,27 @@
 package tech.alexnijjar.golemoverhaul.client.renderers.entities.golems.base;
 
+import com.geckolib.model.GeoModel;
+import com.geckolib.renderer.base.GeoRenderState;
 import com.teamresourceful.resourcefullib.common.registry.RegistryEntry;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.Mth;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.Crackiness;
 import net.minecraft.world.entity.EntityType;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.cache.object.GeoBone;
-import software.bernie.geckolib.constant.DataTickets;
-import software.bernie.geckolib.model.DefaultedEntityGeoModel;
-import software.bernie.geckolib.model.data.EntityModelData;
+import tech.alexnijjar.golemoverhaul.client.renderers.GolemRenderData;
 import tech.alexnijjar.golemoverhaul.common.entities.golems.base.BaseGolem;
 
-public class BaseGolemModel<T extends BaseGolem> extends DefaultedEntityGeoModel<T> {
+/**
+ * Model paths follow GeckoLib 5's defaulted layout: {@code <ns>:entity/<name>} resolves to
+ * {@code geckolib/models/entity/<name>.geo.json} and {@code geckolib/animations/entity/<name>.animation.json} (GeckoLib 5 folder layout); textures are full paths.
+ */
+public class BaseGolemModel<T extends BaseGolem> extends GeoModel<T> {
 
+    private final Identifier model;
+    private final Identifier animation;
+    private final Identifier texture;
+    private final Identifier textureDamaged;
+    private final Identifier textureVeryDamaged;
     private final boolean turnsHead;
     private final int maxHeadRotation;
-    private final ResourceLocation textureDamaged;
-    private final ResourceLocation textureVeryDamaged;
 
     public BaseGolemModel(
         RegistryEntry<EntityType<T>> golem,
@@ -33,62 +38,65 @@ public class BaseGolemModel<T extends BaseGolem> extends DefaultedEntityGeoModel
     }
 
     public BaseGolemModel(
-        ResourceLocation model,
-        ResourceLocation texture,
-        ResourceLocation animation,
+        Identifier model,
+        Identifier texture,
+        Identifier animation,
         boolean turnsHead,
         int maxHeadRotation
     ) {
         this(
-            model,
-            ResourceLocation.fromNamespaceAndPath(texture.getNamespace(), "%s_1".formatted(texture.getPath())),
-            ResourceLocation.fromNamespaceAndPath(texture.getNamespace(), "textures/entity/%s_2.png".formatted(texture.getPath())),
-            ResourceLocation.fromNamespaceAndPath(texture.getNamespace(), "textures/entity/%s_3.png".formatted(texture.getPath())),
-            animation,
+            model.withPrefix("entity/"),
+            texture.withPath("textures/entity/%s_1.png".formatted(texture.getPath())),
+            texture.withPath("textures/entity/%s_2.png".formatted(texture.getPath())),
+            texture.withPath("textures/entity/%s_3.png".formatted(texture.getPath())),
+            animation.withPrefix("entity/"),
             turnsHead,
             maxHeadRotation
         );
     }
 
     public BaseGolemModel(
-        ResourceLocation model,
-        ResourceLocation texture,
-        ResourceLocation textureDamaged,
-        ResourceLocation textureVeryDamaged,
-        ResourceLocation animation,
+        Identifier model,
+        Identifier texture,
+        Identifier textureDamaged,
+        Identifier textureVeryDamaged,
+        Identifier animation,
         boolean turnsHead,
         int maxHeadRotation
     ) {
-        super(model, turnsHead);
-        this.withAltTexture(texture);
-        this.withAltAnimations(animation);
-        this.turnsHead = turnsHead;
+        this.model = model;
+        this.texture = texture;
         this.textureDamaged = textureDamaged;
         this.textureVeryDamaged = textureVeryDamaged;
+        this.animation = animation;
+        this.turnsHead = turnsHead;
         this.maxHeadRotation = maxHeadRotation;
     }
 
-    @Override
-    public void setCustomAnimations(T golem, long instanceId, AnimationState<T> animationState) {
-        if (!turnsHead) return;
+    public boolean turnsHead() {
+        return this.turnsHead;
+    }
 
-        GeoBone head = getAnimationProcessor().getBone("head_rotation");
-        if (head == null) return;
-        if (head.getChildBones().isEmpty()) return;
-        GeoBone headRotation = head.getChildBones().getFirst();
-        if (headRotation == null) return;
-
-        EntityModelData entityData = animationState.getData(DataTickets.ENTITY_MODEL_DATA);
-        headRotation.setRotX(Mth.clamp(entityData.headPitch(), -maxHeadRotation, maxHeadRotation) * Mth.DEG_TO_RAD);
-        headRotation.setRotY(Mth.clamp(entityData.netHeadYaw(), -maxHeadRotation, maxHeadRotation) * Mth.DEG_TO_RAD);
+    public int maxHeadRotation() {
+        return this.maxHeadRotation;
     }
 
     @Override
-    public ResourceLocation getTextureResource(T golem) {
-        return switch (golem.getCrackiness()) {
-            case NONE, LOW -> super.getTextureResource(golem);
-            case MEDIUM -> textureDamaged;
-            case HIGH -> textureVeryDamaged;
+    public Identifier getModelResource(GeoRenderState renderState) {
+        return this.model;
+    }
+
+    @Override
+    public Identifier getTextureResource(GeoRenderState renderState) {
+        return switch (renderState.getOrDefaultGeckolibData(GolemRenderData.CRACKINESS, Crackiness.Level.NONE)) {
+            case NONE, LOW -> this.texture;
+            case MEDIUM -> this.textureDamaged;
+            case HIGH -> this.textureVeryDamaged;
         };
+    }
+
+    @Override
+    public Identifier getAnimationResource(T animatable) {
+        return this.animation;
     }
 }

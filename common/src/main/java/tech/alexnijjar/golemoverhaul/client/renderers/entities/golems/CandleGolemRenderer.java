@@ -1,35 +1,32 @@
 package tech.alexnijjar.golemoverhaul.client.renderers.entities.golems;
 
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
+import com.geckolib.renderer.base.GeoRenderState;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
-import net.minecraft.resources.ResourceLocation;
-import org.jetbrains.annotations.Nullable;
-import software.bernie.geckolib.cache.object.BakedGeoModel;
-import software.bernie.geckolib.renderer.layer.AutoGlowingGeoLayer;
+import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.Crackiness;
 import tech.alexnijjar.golemoverhaul.GolemOverhaul;
+import tech.alexnijjar.golemoverhaul.client.renderers.GolemRenderData;
 import tech.alexnijjar.golemoverhaul.client.renderers.entities.golems.base.BaseGolemModel;
 import tech.alexnijjar.golemoverhaul.client.renderers.entities.golems.base.BaseGolemRenderer;
-import tech.alexnijjar.golemoverhaul.client.utils.ModRenderTypes;
+import tech.alexnijjar.golemoverhaul.client.renderers.entities.golems.layers.GolemGlowLayer;
 import tech.alexnijjar.golemoverhaul.common.entities.golems.CandleGolem;
 import tech.alexnijjar.golemoverhaul.common.registry.ModEntityTypes;
 
 public class CandleGolemRenderer extends BaseGolemRenderer<CandleGolem> {
 
-    public static final ResourceLocation GLOW_1 = ResourceLocation.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "textures/entity/candle/candle_golem_1_glow.png");
-    public static final ResourceLocation GLOW_2 = ResourceLocation.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "textures/entity/candle/candle_golem_2_glow.png");
+    public static final Identifier GLOW_1 = Identifier.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "textures/entity/candle/candle_golem_1_glow.png");
+    public static final Identifier GLOW_2 = Identifier.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "textures/entity/candle/candle_golem_2_glow.png");
 
-    public static final ResourceLocation MODEL_1 = ResourceLocation.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "geo/entity/candle/candle_golem_1.geo.json");
-    public static final ResourceLocation MODEL_2 = ResourceLocation.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "geo/entity/candle/candle_golem_2.geo.json");
-    public static final ResourceLocation MODEL_3 = ResourceLocation.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "geo/entity/candle/candle_golem_3.geo.json");
+    public static final Identifier MODEL_1 = Identifier.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "entity/candle/candle_golem_1");
+    public static final Identifier MODEL_2 = Identifier.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "entity/candle/candle_golem_2");
+    public static final Identifier MODEL_3 = Identifier.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "entity/candle/candle_golem_3");
 
     public CandleGolemRenderer(EntityRendererProvider.Context renderManager) {
         super(renderManager, new BaseGolemModel<>(ModEntityTypes.CANDLE_GOLEM, true, 90) {
             @Override
-            public ResourceLocation getModelResource(CandleGolem golem) {
-                return switch (golem.getCrackiness()) {
+            public Identifier getModelResource(GeoRenderState renderState) {
+                return switch (renderState.getOrDefaultGeckolibData(GolemRenderData.CRACKINESS, Crackiness.Level.NONE)) {
                     case NONE, LOW -> MODEL_1;
                     case MEDIUM -> MODEL_2;
                     case HIGH -> MODEL_3;
@@ -37,22 +34,18 @@ public class CandleGolemRenderer extends BaseGolemRenderer<CandleGolem> {
             }
         });
 
-        addRenderLayer(new AutoGlowingGeoLayer<>(this) {
-            @Override
-            protected @Nullable RenderType getRenderType(CandleGolem golem, @Nullable MultiBufferSource bufferSource) {
-                return switch (golem.getCrackiness()) {
-                    case NONE, LOW -> ModRenderTypes.eyesNoCull(GLOW_1);
-                    case MEDIUM -> ModRenderTypes.eyesNoCull(GLOW_2);
-                    case HIGH -> super.getRenderType(golem, bufferSource);
-                };
-            }
+        withRenderLayer(new GolemGlowLayer<>(this, state -> {
+            if (!state.getOrDefaultGeckolibData(GolemRenderData.LIT, false)) return null;
+            return switch (state.getOrDefaultGeckolibData(GolemRenderData.CRACKINESS, Crackiness.Level.NONE)) {
+                case NONE, LOW -> GLOW_1;
+                case MEDIUM -> GLOW_2;
+                case HIGH -> null;
+            };
+        }));
+    }
 
-            @Override
-            public void render(PoseStack poseStack, CandleGolem golem, BakedGeoModel bakedModel, RenderType renderType, MultiBufferSource bufferSource, VertexConsumer buffer, float partialTick, int packedLight, int packedOverlay) {
-                if (golem.isLit()) {
-                    super.render(poseStack, golem, bakedModel, renderType, bufferSource, buffer, partialTick, packedLight, packedOverlay);
-                }
-            }
-        });
+    @Override
+    protected void addGolemRenderData(CandleGolem golem, LivingEntityRenderState renderState, float partialTick) {
+        renderState.addGeckolibData(GolemRenderData.LIT, golem.isLit());
     }
 }

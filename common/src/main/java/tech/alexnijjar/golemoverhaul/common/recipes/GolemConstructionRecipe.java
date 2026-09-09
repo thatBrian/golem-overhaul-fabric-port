@@ -4,18 +4,20 @@ import com.mojang.datafixers.util.Either;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import com.teamresourceful.bytecodecs.base.ByteCodec;
-import com.teamresourceful.bytecodecs.base.object.ObjectByteCodec;
-import com.teamresourceful.resourcefullib.common.bytecodecs.ExtraByteCodecs;
-import com.teamresourceful.resourcefullib.common.recipe.CodecRecipe;
-import com.teamresourceful.resourcefullib.common.recipe.CodecRecipeSerializer;
-import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.PlacementInfo;
+import net.minecraft.world.item.crafting.Recipe;
+import net.minecraft.world.item.crafting.RecipeBookCategory;
+import net.minecraft.world.item.crafting.RecipeSerializer;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -34,8 +36,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
 
-import static com.teamresourceful.resourcefullib.common.bytecodecs.ExtraByteCodecs.RESOURCE_LOCATION;
-
 public record GolemConstructionRecipe(
     List<String> pattern,
     Map<String, Either<ResourceKey<Block>, TagKey<Block>>> key,
@@ -44,7 +44,7 @@ public record GolemConstructionRecipe(
     boolean visualOnly,
     float blockScale,
     float entityScale
-) implements CodecRecipe<SingleEntityInput> {
+) implements Recipe<SingleEntityInput> {
 
     public static final MapCodec<GolemConstructionRecipe> CODEC = RecordCodecBuilder.mapCodec(
         instance -> instance.group(
@@ -57,21 +57,10 @@ public record GolemConstructionRecipe(
             Codec.FLOAT.optionalFieldOf("entityScale", 1f).forGetter(GolemConstructionRecipe::entityScale)
         ).apply(instance, GolemConstructionRecipe::new));
 
-    @SuppressWarnings("SameParameterValue")
-    private static <T, R extends Registry<T>> ByteCodec<TagKey<T>> tagKey(ResourceKey<R> registry) {
-        return RESOURCE_LOCATION.map(id -> TagKey.create(registry, id), TagKey::location);
-    }
-
-    public static final ByteCodec<GolemConstructionRecipe> NETWORK_CODEC = ObjectByteCodec.create(
-        ByteCodec.STRING.listOf().fieldOf(GolemConstructionRecipe::pattern),
-        new com.teamresourceful.bytecodecs.defaults.MapCodec<>(ByteCodec.STRING, ExtraByteCodecs.either(ExtraByteCodecs.resourceKey(Registries.BLOCK), tagKey(Registries.BLOCK))).fieldOf(GolemConstructionRecipe::key),
-        ExtraByteCodecs.resourceKey(Registries.ENTITY_TYPE).fieldOf(GolemConstructionRecipe::entity),
-        ExtraByteCodecs.resourceKey(Registries.ITEM).fieldOf(GolemConstructionRecipe::item),
-        ByteCodec.BOOLEAN.fieldOf(GolemConstructionRecipe::visualOnly),
-        ByteCodec.FLOAT.fieldOf(GolemConstructionRecipe::blockScale),
-        ByteCodec.FLOAT.fieldOf(GolemConstructionRecipe::entityScale),
-        GolemConstructionRecipe::new
-    );
+    // Recipes are only synced to clients for the recipe book, which never shows this type; the NBT-backed
+    // stream codec is plenty and avoids hand-writing a 7-field byte codec.
+    public static final StreamCodec<RegistryFriendlyByteBuf, GolemConstructionRecipe> STREAM_CODEC =
+        ByteBufCodecs.fromCodecWithRegistries(CODEC.codec());
 
     @Override
     public boolean matches(SingleEntityInput input, Level level) {
@@ -80,13 +69,44 @@ public record GolemConstructionRecipe(
     }
 
     @Override
-    public CodecRecipeSerializer<? extends CodecRecipe<SingleEntityInput>> serializer() {
+    public ItemStack assemble(SingleEntityInput input) {
+        Item result = BuiltInRegistries.ITEM.getValue(this.item());
+        return result == null ? ItemStack.EMPTY : result.getDefaultInstance();
+    }
+
+    @Override
+    public boolean isSpecial() {
+        return true;
+    }
+
+    @Override
+    public boolean showNotification() {
+        return false;
+    }
+
+    @Override
+    public String group() {
+        return "";
+    }
+
+    @Override
+    public RecipeSerializer<? extends Recipe<SingleEntityInput>> getSerializer() {
         return ModRecipeSerializers.GOLEM_CONSTRUCTION.get();
     }
 
     @Override
-    public @NotNull RecipeType<?> getType() {
+    public @NotNull RecipeType<? extends Recipe<SingleEntityInput>> getType() {
         return ModRecipeTypes.GOLEM_CONSTRUCTION.get();
+    }
+
+    @Override
+    public PlacementInfo placementInfo() {
+        return PlacementInfo.NOT_PLACEABLE;
+    }
+
+    @Override
+    public RecipeBookCategory recipeBookCategory() {
+        return ModRecipeTypes.GOLEM_CONSTRUCTION_CATEGORY.get();
     }
 
     public BlockPattern createPattern() {
@@ -94,7 +114,7 @@ public record GolemConstructionRecipe(
         builder.aisle(this.pattern.toArray(new String[0]));
         this.key.forEach((k, v) -> {
             Predicate<BlockState> predicate = v.map(
-                key -> BlockStatePredicate.forBlock(Objects.requireNonNull(BuiltInRegistries.BLOCK.get(key))),
+                key -> BlockStatePredicate.forBlock(Objects.requireNonNull(BuiltInRegistries.BLOCK.getValue(key))),
                 tagKey -> (Predicate<BlockState>) state -> state.is(tagKey));
             builder.where(k.charAt(0), BlockInWorld.hasState(predicate));
         });

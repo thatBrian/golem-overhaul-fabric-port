@@ -1,10 +1,12 @@
 package tech.alexnijjar.golemoverhaul.common.entities.golems;
 
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.state.AnimationTest;
 import net.minecraft.core.particles.ParticleTypes;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.tags.DamageTypeTags;
@@ -19,7 +21,7 @@ import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.RangedAttackGoal;
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
-import net.minecraft.world.entity.animal.AbstractGolem;
+import net.minecraft.world.entity.animal.golem.AbstractGolem;
 import net.minecraft.world.entity.monster.RangedAttackMob;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.Projectile;
@@ -27,11 +29,11 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.pathfinder.Path;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.animation.PlayState;
 import tech.alexnijjar.golemoverhaul.common.constants.ConstantAnimations;
 import tech.alexnijjar.golemoverhaul.common.entities.golems.base.BaseGolem;
 import tech.alexnijjar.golemoverhaul.common.entities.projectiles.CandleFlameProjectile;
@@ -62,7 +64,7 @@ public class CandleGolem extends BaseGolem implements RangedAttackMob {
     }
 
     @Override
-    public PlayState getMoveAnimation(AnimationState<BaseGolem> state, boolean moving) {
+    public PlayState getMoveAnimation(AnimationTest<BaseGolem> state, boolean moving) {
         return state.setAndContinue(moving ? ConstantAnimations.WALK
                 : isSitting() ? ConstantAnimations.SITTING_IDLE : ConstantAnimations.IDLE);
     }
@@ -75,17 +77,17 @@ public class CandleGolem extends BaseGolem implements RangedAttackMob {
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putBoolean("Lit", this.isLit());
-        compound.putBoolean("Sitting", this.isSitting());
+    protected void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putBoolean("Lit", this.isLit());
+        output.putBoolean("Sitting", this.isSitting());
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        this.setLit(compound.getBoolean("Lit"));
-        this.setSitting(compound.getBoolean("Sitting"));
+    protected void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        this.setLit(input.getBooleanOr("Lit", false));
+        this.setSitting(input.getBooleanOr("Sitting", false));
     }
 
     @Override
@@ -137,13 +139,13 @@ public class CandleGolem extends BaseGolem implements RangedAttackMob {
     }
 
     @Override
-    protected void actuallyHurt(DamageSource damageSource, float damageAmount) {
+    protected void actuallyHurt(ServerLevel level, DamageSource damageSource, float damageAmount) {
         if (damageSource.is(DamageTypeTags.IS_FIRE))
             setLit(true);
         if (isSitting()) {
             damageAmount *= 0.1f;
         }
-        super.actuallyHurt(damageSource, damageAmount);
+        super.actuallyHurt(level, damageSource, damageAmount);
         updateAttackGoals();
     }
 
@@ -228,7 +230,7 @@ public class CandleGolem extends BaseGolem implements RangedAttackMob {
             }
         } else if (canBeLit()) {
             if (stack.is(Items.FLINT_AND_STEEL)) {
-                stack.hurtAndBreak(1, player, getSlotForHand(hand));
+                stack.hurtAndBreak(1, player, hand);
                 playSound(SoundEvents.FLINTANDSTEEL_USE);
                 setLit(true);
                 return InteractionResult.SUCCESS;
@@ -244,8 +246,8 @@ public class CandleGolem extends BaseGolem implements RangedAttackMob {
     }
 
     @Override
-    protected AABB getAttackBoundingBox() {
-        return super.getAttackBoundingBox().inflate(0.25f, 0, 0.25f);
+    protected AABB getAttackBoundingBox(double horizontalExpansion) {
+        return super.getAttackBoundingBox(horizontalExpansion).inflate(0.25f, 0, 0.25f);
     }
 
     private class CandleGolemRangedAttackGoal extends RangedAttackGoal {

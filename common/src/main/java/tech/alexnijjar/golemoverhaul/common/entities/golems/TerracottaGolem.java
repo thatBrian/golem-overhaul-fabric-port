@@ -1,10 +1,10 @@
 package tech.alexnijjar.golemoverhaul.common.entities.golems;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.RandomSource;
@@ -17,7 +17,7 @@ import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.RangedAttackGoal;
-import net.minecraft.world.entity.animal.AbstractGolem;
+import net.minecraft.world.entity.animal.golem.AbstractGolem;
 import net.minecraft.world.entity.monster.RangedAttackMob;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.Projectile;
@@ -27,10 +27,11 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import software.bernie.geckolib.animation.AnimatableManager;
 import tech.alexnijjar.golemoverhaul.common.config.GolemOverhaulConfig;
 import tech.alexnijjar.golemoverhaul.common.entities.IShearable;
 import tech.alexnijjar.golemoverhaul.common.entities.golems.base.BaseGolem;
@@ -67,15 +68,10 @@ public class TerracottaGolem extends BaseGolem implements IShearable, RangedAtta
     }
 
     public static boolean checkMobSpawnRules(EntityType<? extends Mob> type, LevelAccessor level,
-            MobSpawnType spawnType, BlockPos pos, RandomSource random) {
+            EntitySpawnReason spawnReason, BlockPos pos, RandomSource random) {
         if (!GolemOverhaulConfig.spawnTerracottaGolems || !GolemOverhaulConfig.allowSpawning)
             return false;
-        return Mob.checkMobSpawnRules(type, level, spawnType, pos, random);
-    }
-
-    @Override
-    public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
-        super.registerControllers(controllers);
+        return Mob.checkMobSpawnRules(type, level, spawnReason, pos, random);
     }
 
     @Override
@@ -85,22 +81,19 @@ public class TerracottaGolem extends BaseGolem implements IShearable, RangedAtta
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putString("type", this.getTerracottaType().name().toLowerCase(Locale.ROOT));
+    protected void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putString("type", this.getTerracottaType().name().toLowerCase(Locale.ROOT));
         if (!this.equippedStack.isEmpty()) {
-            compound.put("item", this.equippedStack.save(this.registryAccess()));
+            output.store("item", ItemStack.OPTIONAL_CODEC, this.equippedStack);
         }
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        this.setTerracottaType(Type.valueOf(compound.getString("type").toUpperCase(Locale.ROOT)));
-        if (compound.contains("item")) {
-            this.equippedStack = ItemStack.parse(this.registryAccess(), compound.getCompound("item"))
-                    .orElse(ItemStack.EMPTY);
-        }
+    protected void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        this.setTerracottaType(Type.valueOf(input.getStringOr("type", "normal").toUpperCase(Locale.ROOT)));
+        this.equippedStack = input.read("item", ItemStack.OPTIONAL_CODEC).orElse(ItemStack.EMPTY);
     }
 
     @Override
@@ -148,9 +141,9 @@ public class TerracottaGolem extends BaseGolem implements IShearable, RangedAtta
     @Nullable
     @Override
     public SpawnGroupData finalizeSpawn(ServerLevelAccessor level, DifficultyInstance difficultyInstance,
-            MobSpawnType mobSpawnType, @Nullable SpawnGroupData spawnGroupData) {
+            EntitySpawnReason spawnReason, @Nullable SpawnGroupData spawnGroupData) {
         this.setTerracottaType(Type.values()[level.getRandom().nextInt(Type.values().length)]);
-        return super.finalizeSpawn(level, difficultyInstance, mobSpawnType, spawnGroupData);
+        return super.finalizeSpawn(level, difficultyInstance, spawnReason, spawnGroupData);
     }
 
     @Override
@@ -186,14 +179,14 @@ public class TerracottaGolem extends BaseGolem implements IShearable, RangedAtta
     }
 
     @Override
-    public boolean hurt(DamageSource source, float amount) {
-        if (!level().isClientSide() && getTerracottaType() == Type.CACTUS && !source.is(DamageTypes.THORNS)) {
+    public boolean hurtServer(ServerLevel level, DamageSource source, float amount) {
+        if (getTerracottaType() == Type.CACTUS && !source.is(DamageTypes.THORNS)) {
             if (source.getDirectEntity() instanceof LivingEntity entity) {
-                entity.hurt(damageSources().thorns(this), 6);
+                entity.hurtServer(level, damageSources().thorns(this), 6);
             }
         }
 
-        return super.hurt(source, amount);
+        return super.hurtServer(level, source, amount);
     }
 
     @Override
@@ -221,7 +214,7 @@ public class TerracottaGolem extends BaseGolem implements IShearable, RangedAtta
     }
 
     @Override
-    protected void customServerAiStep() {
+    protected void customServerAiStep(ServerLevel level) {
         attackAnimationDelay = Math.max(-1, attackAnimationDelay - 1);
         if (attackAnimationDelay == 0) {
             actuallyShoot(getTarget());
@@ -230,8 +223,8 @@ public class TerracottaGolem extends BaseGolem implements IShearable, RangedAtta
     }
 
     @Override
-    protected AABB getAttackBoundingBox() {
-        return super.getAttackBoundingBox().inflate(0.5f, 0, 0.5f);
+    protected AABB getAttackBoundingBox(double horizontalExpansion) {
+        return super.getAttackBoundingBox(horizontalExpansion).inflate(0.5f, 0, 0.5f);
     }
 
     public enum Type {

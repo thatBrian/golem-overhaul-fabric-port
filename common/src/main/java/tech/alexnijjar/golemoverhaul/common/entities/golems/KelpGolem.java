@@ -1,14 +1,19 @@
 package tech.alexnijjar.golemoverhaul.common.entities.golems;
 
+import com.geckolib.animatable.manager.AnimatableManager;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.state.AnimationTest;
 import net.minecraft.core.BlockPos;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.util.Mth;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -23,7 +28,7 @@ import net.minecraft.world.entity.ai.goal.RandomSwimmingGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
 import net.minecraft.world.entity.ai.navigation.WaterBoundPathNavigation;
-import net.minecraft.world.entity.animal.AbstractGolem;
+import net.minecraft.world.entity.animal.golem.AbstractGolem;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
@@ -33,13 +38,11 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.pattern.BlockPattern;
 import net.minecraft.world.level.pathfinder.PathType;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
-import software.bernie.geckolib.animation.AnimatableManager;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.animation.PlayState;
 import tech.alexnijjar.golemoverhaul.common.constants.ConstantAnimations;
 import tech.alexnijjar.golemoverhaul.common.entities.golems.base.BaseGolem;
 import tech.alexnijjar.golemoverhaul.common.recipes.GolemConstructionRecipe;
@@ -74,12 +77,14 @@ public class KelpGolem extends BaseGolem {
     }
 
     public static void trySpawnGolem(Level level, BlockPos pos) {
-        GolemConstructionRecipe recipe = level.getRecipeManager().getRecipeFor(ModRecipeTypes.GOLEM_CONSTRUCTION.get(),
+        // Recipes are server-only since 1.21.2.
+        if (!(level instanceof ServerLevel serverLevel)) return;
+        GolemConstructionRecipe recipe = serverLevel.recipeAccess().getRecipeFor(ModRecipeTypes.GOLEM_CONSTRUCTION.get(),
                 new SingleEntityInput(ModEntityTypes.KELP_GOLEM.get()), level).orElseThrow().value();
         BlockPattern.BlockPatternMatch pattern = recipe.createPattern().find(level, pos);
         if (pattern == null)
             return;
-        KelpGolem golem = ModEntityTypes.KELP_GOLEM.get().create(level);
+        KelpGolem golem = ModEntityTypes.KELP_GOLEM.get().create(level, EntitySpawnReason.TRIGGERED);
         if (golem == null)
             return;
         ModUtils.spawnGolemInWorld(level, pattern, golem, pattern.getBlock(1, 2, 0).getPos());
@@ -89,19 +94,19 @@ public class KelpGolem extends BaseGolem {
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
         controllers.add(this.getMovementController());
 
-        controllers.add(new AnimationController<>(this, "attack_controller", 0, state -> {
+        controllers.add(new AnimationController<KelpGolem>("attack_controller", 0, state -> {
             if (!hasAttackAnimation())
                 return PlayState.STOP;
             if (attackAnimationTicks == 0) {
-                state.resetCurrentAnimation();
+                state.controller().reset();
                 return PlayState.STOP;
             }
             return getAttackAnimation(state);
         }));
 
-        controllers.add(new AnimationController<>(this, "spin_controller", 0, state -> {
+        controllers.add(new AnimationController<KelpGolem>("spin_controller", 0, state -> {
             if (!isCharged()) {
-                state.resetCurrentAnimation();
+                state.controller().reset();
                 return PlayState.STOP;
             }
             return state.setAndContinue(ConstantAnimations.SPIN);
@@ -109,21 +114,21 @@ public class KelpGolem extends BaseGolem {
     }
 
     @Override
-    public AnimationController<?> getMovementController() {
+    public AnimationController<BaseGolem> getMovementController() {
         return super.getMovementController()
                 .setSoundKeyframeHandler(event -> level().playLocalSound(blockPosition(),
                         ModSoundEvents.KELP_GOLEM_STEP.get(), getSoundSource(), 1, 1, false));
     }
 
     @Override
-    public PlayState handleMovementController(AnimationState<BaseGolem> state) {
-        boolean moving = state.getLimbSwingAmount() > 0.05 || state.getLimbSwingAmount() < -0.05;
+    public PlayState handleMovementController(AnimationTest<BaseGolem> state) {
+        boolean moving = state.isMoving();
 
         if (isInWater()) {
-            state.getController().setAnimation(ConstantAnimations.SWIM);
+            state.setAnimation(ConstantAnimations.SWIM);
             return PlayState.CONTINUE;
         }
-        state.getController().setAnimation(moving ? ConstantAnimations.WALK
+        state.setAnimation(moving ? ConstantAnimations.WALK
                 : isInWater() ? ConstantAnimations.IDLE_WATER : ConstantAnimations.IDLE);
 
         return PlayState.CONTINUE;
@@ -136,21 +141,21 @@ public class KelpGolem extends BaseGolem {
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putBoolean("Charged", this.isCharged());
+    protected void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putBoolean("Charged", this.isCharged());
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        this.setCharged(compound.getBoolean("Charged"));
+    protected void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        this.setCharged(input.getBooleanOr("Charged", false));
     }
 
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0,
-                new NearestAttackableTargetGoal<>(this, Mob.class, 3, true, false, this::shouldAttack));
+                new NearestAttackableTargetGoal<>(this, Mob.class, 3, true, false, (target, level) -> this.shouldAttack(target)));
         this.goalSelector.addGoal(2, new RandomSwimmingGoal(this, 1, 40));
         this.goalSelector.addGoal(4, new RandomStrollGoal(this, 0.6));
         this.goalSelector.addGoal(7, new LookAtPlayerGoal(this, Player.class, 6));
@@ -222,9 +227,9 @@ public class KelpGolem extends BaseGolem {
         if (!level().isClientSide() && tickCount % 60 == 0) {
             if (this.inConduitRange()) {
                 this.setCharged(true);
-                this.addEffect(new MobEffectInstance(MobEffects.DAMAGE_BOOST, 100, 1, true, true));
+                this.addEffect(new MobEffectInstance(MobEffects.STRENGTH, 100, 1, true, true));
                 this.addEffect(new MobEffectInstance(MobEffects.REGENERATION, 100, 0, true, true));
-                this.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE, 100, 1, true, true));
+                this.addEffect(new MobEffectInstance(MobEffects.RESISTANCE, 100, 1, true, true));
             } else {
                 this.setCharged(false);
             }
@@ -242,7 +247,7 @@ public class KelpGolem extends BaseGolem {
 
     @Override
     public void travel(@NotNull Vec3 travelVector) {
-        if (this.isControlledByLocalInstance() && this.isInWater()) {
+        if (this.isLocalInstanceAuthoritative() && this.isInWater()) {
             this.moveRelative(0.01f, travelVector);
             this.move(MoverType.SELF, this.getDeltaMovement());
             this.setDeltaMovement(this.getDeltaMovement().scale(0.9));
@@ -265,12 +270,18 @@ public class KelpGolem extends BaseGolem {
         super.updateSwimming();
     }
 
+    private boolean isInWaterOrBubbleColumn() {
+        return this.isInWater() || this.level().getBlockState(this.blockPosition()).is(Blocks.BUBBLE_COLUMN);
+    }
+
     protected void handleAirSupply(int airSupply) {
-        if (this.isAlive() && !this.isInWaterOrBubble()) {
+        if (this.isAlive() && !this.isInWaterOrBubbleColumn()) {
             this.setAirSupply(airSupply - 1);
             if (this.getAirSupply() == -200) {
                 this.setAirSupply(0);
-                this.hurt(this.damageSources().drown(), 2);
+                if (level() instanceof ServerLevel serverLevel) {
+                    this.hurtServer(serverLevel, this.damageSources().drown(), 2);
+                }
             }
         } else {
             this.setAirSupply(300);
@@ -278,8 +289,8 @@ public class KelpGolem extends BaseGolem {
     }
 
     @Override
-    protected AABB getAttackBoundingBox() {
-        return super.getAttackBoundingBox().inflate(2.0, 0, 2.0);
+    protected AABB getAttackBoundingBox(double horizontalExpansion) {
+        return super.getAttackBoundingBox(horizontalExpansion).inflate(2.0, 0, 2.0);
     }
 
     private class KelpGolemMoveControl extends MoveControl {

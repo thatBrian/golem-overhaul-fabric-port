@@ -1,8 +1,10 @@
 package tech.alexnijjar.golemoverhaul.common.entities.golems;
 
+import com.geckolib.animatable.manager.AnimatableManager;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.object.PlayState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -18,7 +20,7 @@ import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.animal.AbstractGolem;
+import net.minecraft.world.entity.animal.golem.AbstractGolem;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -27,14 +29,13 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.pattern.BlockPattern;
 import net.minecraft.world.level.pathfinder.PathType;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import software.bernie.geckolib.animation.AnimatableManager;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.PlayState;
 import tech.alexnijjar.golemoverhaul.common.constants.ConstantAnimations;
 import tech.alexnijjar.golemoverhaul.common.entities.IShearable;
 import tech.alexnijjar.golemoverhaul.common.entities.golems.base.BaseGolem;
@@ -83,12 +84,14 @@ public class NetheriteGolem extends BaseGolem implements IShearable, PlayerRidea
     }
 
     public static void trySpawnGolem(Level level, BlockPos pos) {
+        // Recipes are server-only since 1.21.2.
+        if (!(level instanceof ServerLevel serverLevel)) return;
         GolemConstructionRecipe recipe =
-                level.getRecipeManager().getRecipeFor(ModRecipeTypes.GOLEM_CONSTRUCTION.get(),
+                serverLevel.recipeAccess().getRecipeFor(ModRecipeTypes.GOLEM_CONSTRUCTION.get(),
                         new SingleEntityInput(ModEntityTypes.NETHERITE_GOLEM.get()), level).orElseThrow().value();
         BlockPattern.BlockPatternMatch pattern = recipe.createPattern().find(level, pos);
         if (pattern == null) return;
-        NetheriteGolem golem = ModEntityTypes.NETHERITE_GOLEM.get().create(level);
+        NetheriteGolem golem = ModEntityTypes.NETHERITE_GOLEM.get().create(level, EntitySpawnReason.TRIGGERED);
         if (golem == null) return;
         ModUtils.spawnGolemInWorld(level, pattern, golem, pattern.getBlock(1, 2, 0).getPos());
     }
@@ -97,25 +100,25 @@ public class NetheriteGolem extends BaseGolem implements IShearable, PlayerRidea
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
         controllers.add(this.getMovementController());
 
-        controllers.add(new AnimationController<>(this, "attack_controller", 0, state -> {
+        controllers.add(new AnimationController<NetheriteGolem>("attack_controller", 0, state -> {
             if (!hasAttackAnimation()) return PlayState.STOP;
             if (attackAnimationTicks == 0) {
-                state.resetCurrentAnimation();
+                state.controller().reset();
                 return PlayState.STOP;
             }
             return getAttackAnimation(state);
         }).setSoundKeyframeHandler(event -> level().playLocalSound(blockPosition(),
                 ModSoundEvents.NETHERITE_GOLEM_HIT.get(), getSoundSource(), 1, 1, false)));
 
-        controllers.add(new AnimationController<>(this, "death_controller", 0, state -> {
+        controllers.add(new AnimationController<NetheriteGolem>("death_controller", 0, state -> {
             if (deathTime == 0) return PlayState.STOP;
             return state.setAndContinue(ConstantAnimations.DIE);
         }).setSoundKeyframeHandler(event -> level().playLocalSound(blockPosition(),
                 ModSoundEvents.NETHERITE_GOLEM_DEATH.get(), getSoundSource(), 1, 1, false)));
 
-        controllers.add(new AnimationController<>(this, "summon_controller", 0, state -> {
+        controllers.add(new AnimationController<NetheriteGolem>("summon_controller", 0, state -> {
             if (getSummoningTicks() == 0) {
-                state.resetCurrentAnimation();
+                state.controller().reset();
                 return PlayState.STOP;
             }
             return state.setAndContinue(ConstantAnimations.SUMMON);
@@ -124,7 +127,7 @@ public class NetheriteGolem extends BaseGolem implements IShearable, PlayerRidea
     }
 
     @Override
-    public AnimationController<?> getMovementController() {
+    public AnimationController<BaseGolem> getMovementController() {
         return super.getMovementController()
                 .setSoundKeyframeHandler(event -> level().playLocalSound(blockPosition(),
                         ModSoundEvents.NETHERITE_GOLEM_STEP.get(), getSoundSource(), 1, 1, false));
@@ -138,21 +141,21 @@ public class NetheriteGolem extends BaseGolem implements IShearable, PlayerRidea
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putBoolean("charged", this.isCharged());
-        compound.putBoolean("gilded", this.isGilded());
-        compound.putInt("summoning_ticks", this.getSummoningTicks());
-        compound.putInt("summon_cooldown", this.getSummonCooldown());
+    protected void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putBoolean("charged", this.isCharged());
+        output.putBoolean("gilded", this.isGilded());
+        output.putInt("summoning_ticks", this.getSummoningTicks());
+        output.putInt("summon_cooldown", this.getSummonCooldown());
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        this.setCharged(compound.getBoolean("charged"));
-        this.setGilded(compound.getBoolean("gilded"));
-        this.setSummoningTicks(compound.getInt("summoning_ticks"));
-        this.setSummonCooldown(compound.getInt("summon_cooldown"));
+    protected void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        this.setCharged(input.getBooleanOr("charged", false));
+        this.setGilded(input.getBooleanOr("gilded", false));
+        this.setSummoningTicks(input.getIntOr("summoning_ticks", 0));
+        this.setSummonCooldown(input.getIntOr("summon_cooldown", 0));
     }
 
     public boolean isCharged() {
@@ -210,7 +213,7 @@ public class NetheriteGolem extends BaseGolem implements IShearable, PlayerRidea
     }
 
     @Override
-    protected boolean isAffectedByFluids() {
+    public boolean isAffectedByFluids() {
         return false;
     }
 
@@ -230,11 +233,11 @@ public class NetheriteGolem extends BaseGolem implements IShearable, PlayerRidea
     }
 
     @Override
-    public boolean hurt(DamageSource source, float amount) {
+    public boolean hurtServer(ServerLevel level, DamageSource source, float amount) {
         if (source.is(DamageTypeTags.IS_PROJECTILE)) return false;
         if (source.is(DamageTypes.CACTUS)) return false;
         if (source.is(DamageTypes.INDIRECT_MAGIC)) return false;
-        return super.hurt(source, amount);
+        return super.hurtServer(level, source, amount);
     }
 
     @Override
@@ -344,8 +347,8 @@ public class NetheriteGolem extends BaseGolem implements IShearable, PlayerRidea
     }
 
     @Override
-    protected AABB getAttackBoundingBox() {
-        return super.getAttackBoundingBox().inflate(1, 0, 1);
+    protected AABB getAttackBoundingBox(double horizontalExpansion) {
+        return super.getAttackBoundingBox(horizontalExpansion).inflate(1, 0, 1);
     }
 
     @Override
@@ -450,13 +453,14 @@ public class NetheriteGolem extends BaseGolem implements IShearable, PlayerRidea
     }
 
     public void doAoeAttack(@Nullable LivingEntity target, float damage, float radius, float y) {
+        if (!(level() instanceof ServerLevel serverLevel)) return;
         for (var entity : level().getEntitiesOfClass(LivingEntity.class, this.getBoundingBox().inflate(radius))) {
             if (entity != this) {
                 if (target != null && entity instanceof AbstractGolem) continue;
                 if (target != null && entity instanceof Player) continue;
                 if (target != null && entity instanceof OwnableEntity) continue;
                 if (entity.equals(getFirstPassenger())) continue;
-                entity.hurt(damageSources().mobAttack(this), damage);
+                entity.hurtServer(serverLevel, damageSources().mobAttack(this), damage);
                 Vec3 lookAngle = getLookAngle();
                 entity.addDeltaMovement(new Vec3(lookAngle.x * 0.4, y, lookAngle.z * 0.4));
             }
@@ -514,14 +518,13 @@ public class NetheriteGolem extends BaseGolem implements IShearable, PlayerRidea
     public void spawnCoalGolems() {
         playSound(SoundEvents.FIRECHARGE_USE);
         for (int i = 0; i < 5; i++) {
-            CoalGolem golem = ModEntityTypes.COAL_GOLEM.get().create(level());
+            CoalGolem golem = ModEntityTypes.COAL_GOLEM.get().create(level(), EntitySpawnReason.MOB_SUMMONED);
             if (golem == null) return;
             Vec3 lookAngle = getLookAngle();
             golem.setPos(getX() + lookAngle.x * 0.5, getY() + 0.35, getZ() + lookAngle.z * 0.5);
             golem.setLit(true);
             golem.setSummoner(getUUID());
             level().addFreshEntity(golem);
-            golem.setTarget(getTarget());
             golem.setTarget(getTarget());
         }
 

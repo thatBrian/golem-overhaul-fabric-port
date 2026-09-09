@@ -1,39 +1,27 @@
 package tech.alexnijjar.golemoverhaul.client.renderers.entities.projectiles;
 
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.math.Axis;
-import com.teamresourceful.resourcefullib.client.CloseablePoseStack;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
+import com.geckolib.renderer.specialty.DirectionalProjectileRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.Mth;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
-import software.bernie.geckolib.cache.object.BakedGeoModel;
-import software.bernie.geckolib.model.DefaultedEntityGeoModel;
-import software.bernie.geckolib.renderer.GeoEntityRenderer;
 import tech.alexnijjar.golemoverhaul.common.entities.projectiles.HoneyBlobProjectile;
 import tech.alexnijjar.golemoverhaul.common.registry.ModEntityTypes;
 
-public class HoneyBlobProjectileRenderer extends GeoEntityRenderer<HoneyBlobProjectile> {
+/**
+ * GeckoLib 5 ships a projectile renderer that orients the model along its flight path, which is what the
+ * hand-rolled yaw/pitch rotation upstream was doing.
+ */
+public class HoneyBlobProjectileRenderer extends DirectionalProjectileRenderer<HoneyBlobProjectile, EntityRenderState> {
 
     public HoneyBlobProjectileRenderer(EntityRendererProvider.Context renderManager) {
-        super(renderManager, new DefaultedEntityGeoModel<>(BuiltInRegistries.ENTITY_TYPE.getKey(ModEntityTypes.HONEY_BLOB.get())));
+        super(renderManager, ModEntityTypes.HONEY_BLOB.get());
     }
 
     @Override
-    public RenderType getRenderType(HoneyBlobProjectile animatable, ResourceLocation texture, MultiBufferSource bufferSource, float partialTick) {
-        return RenderType.entityTranslucent(texture);
-    }
-
-    @Override
-    public void actuallyRender(PoseStack poseStack, HoneyBlobProjectile animatable, BakedGeoModel model, @Nullable RenderType renderType, MultiBufferSource bufferSource, @Nullable VertexConsumer buffer, boolean isReRender, float partialTick, int packedLight, int packedOverlay, int colour) {
-        try (var pose = new CloseablePoseStack(poseStack)) {
-            pose.mulPose(Axis.YP.rotationDegrees(Mth.lerp(partialTick, animatable.yRotO, animatable.getYRot())));
-            pose.mulPose(Axis.XN.rotationDegrees(Mth.lerp(partialTick, animatable.xRotO, animatable.getXRot())));
-            super.actuallyRender(poseStack, animatable, model, renderType, bufferSource, buffer, isReRender, partialTick, packedLight, packedOverlay, colour);
-        }
+    public @Nullable RenderType getRenderType(EntityRenderState renderState, Identifier texture) {
+        return RenderTypes.entityTranslucent(texture);
     }
 }

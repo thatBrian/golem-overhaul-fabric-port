@@ -4,50 +4,54 @@ import com.teamresourceful.resourcefullib.common.item.tabs.ResourcefulCreativeMo
 import com.teamresourceful.resourcefullib.common.registry.RegistryEntry;
 import com.teamresourceful.resourcefullib.common.registry.ResourcefulRegistries;
 import com.teamresourceful.resourcefullib.common.registry.ResourcefulRegistry;
-import dev.architectury.injectables.annotations.ExpectPlatform;
+import com.teamresourceful.resourcefullib.common.registry.builtin.ResourcefulItemRegistry;
+import com.teamresourceful.resourcefullib.common.registry.builtin.base.ItemLikeEntry;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.SpawnEggItem;
-import org.apache.commons.lang3.NotImplementedException;
 import tech.alexnijjar.golemoverhaul.GolemOverhaul;
+import tech.alexnijjar.golemoverhaul.common.constants.ConstantComponents;
 import tech.alexnijjar.golemoverhaul.common.items.CoalGolemItem;
 import tech.alexnijjar.golemoverhaul.common.items.HoneyBlobItem;
-
-import java.util.function.Supplier;
+import tech.alexnijjar.golemoverhaul.common.items.TooltipBlockItem;
 
 @SuppressWarnings("unused")
 public class ModItems {
 
-    public static final ResourcefulRegistry<Item> ITEMS = ResourcefulRegistries.create(BuiltInRegistries.ITEM, GolemOverhaul.MOD_ID);
-    public static final ResourcefulRegistry<Item> SPAWN_EGGS = ResourcefulRegistries.create(ITEMS);
+    // ResourcefulItemRegistry stamps the registry key onto Item.Properties (required since 1.21.2).
+    public static final ResourcefulItemRegistry ITEMS = ResourcefulRegistries.createForItems(GolemOverhaul.MOD_ID);
     public static final ResourcefulRegistry<CreativeModeTab> TABS = ResourcefulRegistries.create(BuiltInRegistries.CREATIVE_MODE_TAB, GolemOverhaul.MOD_ID);
-    public static final RegistryEntry<CreativeModeTab> TAB = TABS.register("main", () -> new ResourcefulCreativeModeTab(ResourceLocation.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "main"))
+    public static final RegistryEntry<CreativeModeTab> TAB = TABS.register("main", () -> new ResourcefulCreativeModeTab(Identifier.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "main"))
         .setItemIcon(() -> ModItems.CLAY_GOLEM_STATUE.get())
         .addRegistry(ITEMS)
         .build());
 
-    public static final RegistryEntry<Item> BARREL_GOLEM_SPAWN_EGG = SPAWN_EGGS.register("barrel_golem_spawn_egg", () -> createSpawnEgg(ModEntityTypes.BARREL_GOLEM, 0xb47f44, 0x603c2d, new Item.Properties()));
-    public static final RegistryEntry<Item> CANDLE_GOLEM_SPAWN_EGG = SPAWN_EGGS.register("candle_golem_spawn_egg", () -> createSpawnEgg(ModEntityTypes.CANDLE_GOLEM, 0xe4ca84, 0x956a4a, new Item.Properties()));
-    public static final RegistryEntry<Item> COAL_GOLEM_SPAWN_EGG = SPAWN_EGGS.register("coal_golem_spawn_egg", () -> createSpawnEgg(ModEntityTypes.COAL_GOLEM, 0xf8df66, 0xd47721, new Item.Properties()));
-    public static final RegistryEntry<Item> HAY_GOLEM_SPAWN_EGG = SPAWN_EGGS.register("hay_golem_spawn_egg", () -> createSpawnEgg(ModEntityTypes.HAY_GOLEM, 0xcd8d37, 0xd9c373, new Item.Properties()));
-    public static final RegistryEntry<Item> HONEY_GOLEM_SPAWN_EGG = SPAWN_EGGS.register("honey_golem_spawn_egg", () -> createSpawnEgg(ModEntityTypes.HONEY_GOLEM, 0xedb043, 0xdb914c, new Item.Properties()));
-    public static final RegistryEntry<Item> KELP_GOLEM_SPAWN_EGG = SPAWN_EGGS.register("kelp_golem_spawn_egg", () -> createSpawnEgg(ModEntityTypes.KELP_GOLEM, 0x56d0b6, 0x548324, new Item.Properties()));
-    public static final RegistryEntry<Item> NETHERITE_GOLEM_SPAWN_EGG = SPAWN_EGGS.register("netherite_golem_spawn_egg", () -> createSpawnEgg(ModEntityTypes.NETHERITE_GOLEM, 0x2f2829, 0x3b393b, new Item.Properties()));
-    public static final RegistryEntry<Item> SLIME_GOLEM_SPAWN_EGG = SPAWN_EGGS.register("slime_golem_spawn_egg", () -> createSpawnEgg(ModEntityTypes.SLIME_GOLEM, 0xddf162, 0x80bc47, new Item.Properties()));
-    public static final RegistryEntry<Item> TERRACOTTA_GOLEM_SPAWN_EGG = SPAWN_EGGS.register("terracotta_golem_spawn_egg", () -> createSpawnEgg(ModEntityTypes.TERRACOTTA_GOLEM, 0xae8737, 0x87593c, new Item.Properties()));
+    public static final ItemLikeEntry<SpawnEggItem> BARREL_GOLEM_SPAWN_EGG = spawnEgg("barrel_golem_spawn_egg", ModEntityTypes.BARREL_GOLEM);
+    public static final ItemLikeEntry<SpawnEggItem> CANDLE_GOLEM_SPAWN_EGG = spawnEgg("candle_golem_spawn_egg", ModEntityTypes.CANDLE_GOLEM);
+    public static final ItemLikeEntry<SpawnEggItem> COAL_GOLEM_SPAWN_EGG = spawnEgg("coal_golem_spawn_egg", ModEntityTypes.COAL_GOLEM);
+    public static final ItemLikeEntry<SpawnEggItem> HAY_GOLEM_SPAWN_EGG = spawnEgg("hay_golem_spawn_egg", ModEntityTypes.HAY_GOLEM);
+    public static final ItemLikeEntry<SpawnEggItem> HONEY_GOLEM_SPAWN_EGG = spawnEgg("honey_golem_spawn_egg", ModEntityTypes.HONEY_GOLEM);
+    public static final ItemLikeEntry<SpawnEggItem> KELP_GOLEM_SPAWN_EGG = spawnEgg("kelp_golem_spawn_egg", ModEntityTypes.KELP_GOLEM);
+    public static final ItemLikeEntry<SpawnEggItem> NETHERITE_GOLEM_SPAWN_EGG = spawnEgg("netherite_golem_spawn_egg", ModEntityTypes.NETHERITE_GOLEM);
+    public static final ItemLikeEntry<SpawnEggItem> SLIME_GOLEM_SPAWN_EGG = spawnEgg("slime_golem_spawn_egg", ModEntityTypes.SLIME_GOLEM);
+    public static final ItemLikeEntry<SpawnEggItem> TERRACOTTA_GOLEM_SPAWN_EGG = spawnEgg("terracotta_golem_spawn_egg", ModEntityTypes.TERRACOTTA_GOLEM);
 
-    public static final RegistryEntry<Item> CANDLE_GOLEM_BLOCK = ITEMS.register("candle_golem_block", () -> new BlockItem(ModBlocks.CANDLE_GOLEM_BLOCK.get(), new Item.Properties()));
-    public static final RegistryEntry<Item> CLAY_GOLEM_STATUE = ITEMS.register("clay_golem_statue", () -> new BlockItem(ModBlocks.CLAY_GOLEM_STATUE.get(), new Item.Properties()));
-    public static final RegistryEntry<Item> HONEY_BLOB = ITEMS.register("honey_blob", () -> new HoneyBlobItem(new Item.Properties()));
-    public static final RegistryEntry<Item> COAL_GOLEM = ITEMS.register("coal_golem", () -> new CoalGolemItem(new Item.Properties().stacksTo(16)));
+    // Blocks lost their hover-text hook in 26.1, so the tooltip lives on the BlockItem now.
+    public static final ItemLikeEntry<BlockItem> CANDLE_GOLEM_BLOCK = ITEMS.register("candle_golem_block",
+        properties -> new TooltipBlockItem(ModBlocks.CANDLE_GOLEM_BLOCK.get(), properties.useBlockDescriptionPrefix(), ConstantComponents.CANDLE_GOLEM_TOOLTIP),
+        Item.Properties::new);
+    public static final ItemLikeEntry<BlockItem> CLAY_GOLEM_STATUE = ITEMS.register("clay_golem_statue",
+        properties -> new TooltipBlockItem(ModBlocks.CLAY_GOLEM_STATUE.get(), properties.useBlockDescriptionPrefix(), ConstantComponents.CLAY_GOLEM_STATUE_TOOLTIP),
+        Item.Properties::new);
+    public static final ItemLikeEntry<HoneyBlobItem> HONEY_BLOB = ITEMS.register("honey_blob", HoneyBlobItem::new, Item.Properties::new);
+    public static final ItemLikeEntry<CoalGolemItem> COAL_GOLEM = ITEMS.register("coal_golem", CoalGolemItem::new, () -> new Item.Properties().stacksTo(16));
 
-    @ExpectPlatform
-    public static SpawnEggItem createSpawnEgg(Supplier<? extends EntityType<? extends Mob>> type, int backgroundColor, int highlightColor, Item.Properties properties) {
-        throw new NotImplementedException();
+    private static ItemLikeEntry<SpawnEggItem> spawnEgg(String id, RegistryEntry<? extends EntityType<? extends Mob>> type) {
+        return ITEMS.register(id, SpawnEggItem::new, () -> new Item.Properties().spawnEgg(type.get()));
     }
 }

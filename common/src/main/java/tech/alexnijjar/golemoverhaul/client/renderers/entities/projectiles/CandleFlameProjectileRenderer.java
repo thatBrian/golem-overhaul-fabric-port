@@ -1,50 +1,60 @@
 package tech.alexnijjar.golemoverhaul.client.renderers.entities.projectiles;
 
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.*;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
-import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
-import net.minecraft.resources.ResourceLocation;
-import org.joml.Matrix4f;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.LightCoordsUtil;
+import org.joml.Vector3f;
 import tech.alexnijjar.golemoverhaul.common.entities.projectiles.CandleFlameProjectile;
 
-public class CandleFlameProjectileRenderer extends EntityRenderer<CandleFlameProjectile> {
+/**
+ * A camera-facing flame sprite. 26.1 replaced immediate-mode drawing with submitted render tasks,
+ * so the quad is handed to the collector as custom geometry instead of pushed through a Tesselator.
+ */
+public class CandleFlameProjectileRenderer extends EntityRenderer<CandleFlameProjectile, EntityRenderState> {
 
-    private static final ResourceLocation TEXTURE = ResourceLocation.withDefaultNamespace("textures/particle/flame.png");
+    private static final Identifier TEXTURE = Identifier.withDefaultNamespace("textures/particle/flame.png");
 
     public CandleFlameProjectileRenderer(EntityRendererProvider.Context context) {
         super(context);
     }
 
     @Override
-    public void render(CandleFlameProjectile entity, float entityYaw, float partialTick, PoseStack poseStack, MultiBufferSource buffer, int packedLight) {
-        poseStack.pushPose();
-        poseStack.mulPose(this.entityRenderDispatcher.cameraOrientation());
-        poseStack.mulPose(Axis.YP.rotationDegrees(180));
-        poseStack.mulPose(Axis.XP.rotationDegrees(180));
-        this.renderQuad(poseStack.last().pose());
-        poseStack.popPose();
-        super.render(entity, entityYaw, partialTick, poseStack, buffer, packedLight);
-    }
-
-    private void renderQuad(Matrix4f matrix) {
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        RenderSystem.setShaderTexture(0, TEXTURE);
-        BufferBuilder buffer = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-
-        buffer.addVertex(matrix, -0.25f, -0.4f, 0).setUv(1, 0);
-        buffer.addVertex(matrix, 0.25f, -0.4f, 0).setUv(0, 0);
-        buffer.addVertex(matrix, 0.25f, 0.1f, 0).setUv(0, 1);
-        buffer.addVertex(matrix, -0.25f, 0.1f, 0).setUv(1, 1);
-
-        BufferUploader.drawWithShader(buffer.buildOrThrow());
+    public EntityRenderState createRenderState() {
+        return new EntityRenderState();
     }
 
     @Override
-    public ResourceLocation getTextureLocation(CandleFlameProjectile entity) {
-        return TEXTURE;
+    public void submit(EntityRenderState state, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState camera) {
+        poseStack.pushPose();
+        poseStack.mulPose(camera.orientation);
+        poseStack.mulPose(Axis.YP.rotationDegrees(180));
+        poseStack.mulPose(Axis.XP.rotationDegrees(180));
+        collector.submitCustomGeometry(poseStack, RenderTypes.entityTranslucentEmissive(TEXTURE), (pose, buffer) -> {
+            vertex(pose, buffer, -0.25f, -0.4f, 1, 0);
+            vertex(pose, buffer, 0.25f, -0.4f, 0, 0);
+            vertex(pose, buffer, 0.25f, 0.1f, 0, 1);
+            vertex(pose, buffer, -0.25f, 0.1f, 1, 1);
+        });
+        poseStack.popPose();
+        super.submit(state, poseStack, collector, camera);
+    }
+
+    private static void vertex(PoseStack.Pose pose, VertexConsumer buffer, float x, float y, float u, float v) {
+        Vector3f position = pose.pose().transformPosition(x, y, 0, new Vector3f());
+        buffer.addVertex(position.x(), position.y(), position.z())
+            .setColor(-1)
+            .setUv(u, v)
+            .setOverlay(OverlayTexture.NO_OVERLAY)
+            .setLight(LightCoordsUtil.FULL_BRIGHT)
+            .setNormal(0, 1, 0);
     }
 }

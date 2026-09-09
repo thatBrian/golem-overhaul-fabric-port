@@ -1,42 +1,39 @@
 package tech.alexnijjar.golemoverhaul.client;
 
+import com.geckolib.renderer.GeoEntityRenderer;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.architectury.event.events.client.ClientTickEvent;
-import dev.architectury.injectables.annotations.ExpectPlatform;
 import dev.architectury.registry.client.keymappings.KeyMappingRegistry;
 import dev.architectury.registry.client.level.entity.EntityRendererRegistry;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.world.level.block.Block;
-import org.apache.commons.lang3.NotImplementedException;
-import software.bernie.geckolib.model.DefaultedEntityGeoModel;
-import software.bernie.geckolib.renderer.GeoEntityRenderer;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.resources.Identifier;
+import tech.alexnijjar.golemoverhaul.GolemOverhaul;
 import tech.alexnijjar.golemoverhaul.client.renderers.entities.golems.*;
 import tech.alexnijjar.golemoverhaul.client.renderers.entities.projectiles.CandleFlameProjectileRenderer;
 import tech.alexnijjar.golemoverhaul.client.renderers.entities.projectiles.HoneyBlobProjectileRenderer;
-import tech.alexnijjar.golemoverhaul.common.constants.ConstantComponents;
 import tech.alexnijjar.golemoverhaul.common.entities.golems.NetheriteGolem;
+import tech.alexnijjar.golemoverhaul.common.entities.projectiles.MudBallProjectile;
 import tech.alexnijjar.golemoverhaul.common.network.NetworkHandler;
 import tech.alexnijjar.golemoverhaul.common.network.packets.ServerboundGolemSummonPacket;
-import tech.alexnijjar.golemoverhaul.common.registry.ModBlocks;
 import tech.alexnijjar.golemoverhaul.common.registry.ModEntityTypes;
-
-import java.util.function.Supplier;
 
 public class GolemOverhaulClient {
 
+    // Key categories are registered objects since 1.21.9; the label comes from key.category.<namespace>.<path>.
+    public static final KeyMapping.Category KEY_CATEGORY = KeyMapping.Category.register(Identifier.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "golemoverhaul"));
+
     public static final KeyMapping KEY_NETHERITE_GOLEM_SUMMON = new KeyMapping(
-        ConstantComponents.NETHERITE_GOLEM_SUMMON_KEY.getString(),
+        "key.golemoverhaul.netherite_golem_summon",
         InputConstants.KEY_R,
-        ConstantComponents.GOLEM_OVERHAUL_CATEGORY.getString());
+        KEY_CATEGORY);
 
     public static void init() {
         registerKeyMappings();
         registerEntityRenderers();
-        registerBlockRenderTypes();
+        // Block render layers are no longer registered: 26.1 picks cutout/translucent from the texture itself.
     }
 
     private static void registerKeyMappings() {
@@ -66,18 +63,7 @@ public class GolemOverhaulClient {
 
         EntityRendererRegistry.register(ModEntityTypes.CANDLE_FLAME, CandleFlameProjectileRenderer::new);
         EntityRendererRegistry.register(ModEntityTypes.MUD_BALL, context ->
-                new GeoEntityRenderer<>(context, new DefaultedEntityGeoModel<>(BuiltInRegistries.ENTITY_TYPE.getKey(ModEntityTypes.MUD_BALL.get()))));
+                new GeoEntityRenderer<MudBallProjectile, EntityRenderState>(context, ModEntityTypes.MUD_BALL.get()));
         EntityRendererRegistry.register(ModEntityTypes.HONEY_BLOB, HoneyBlobProjectileRenderer::new);
-    }
-
-    private static void registerBlockRenderTypes() {
-        registerBlockRenderType(ModBlocks.CANDLE_GOLEM_BLOCK, RenderType.cutout());
-        registerBlockRenderType(ModBlocks.CLAY_GOLEM_STATUE, RenderType.cutout());
-    }
-
-    @SuppressWarnings("unused")
-    @ExpectPlatform
-    private static void registerBlockRenderType(Supplier<Block> block, RenderType type) {
-        throw new NotImplementedException();
     }
 }

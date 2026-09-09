@@ -3,24 +3,24 @@ package tech.alexnijjar.golemoverhaul.common.entities.golems;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.util.ProblemReporter;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.RangedAttackGoal;
-import net.minecraft.world.entity.animal.AbstractGolem;
-import net.minecraft.world.entity.animal.Bee;
+import net.minecraft.world.entity.animal.bee.Bee;
+import net.minecraft.world.entity.animal.golem.AbstractGolem;
 import net.minecraft.world.entity.monster.RangedAttackMob;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.Projectile;
@@ -29,6 +29,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.level.storage.TagValueOutput;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import org.jetbrains.annotations.NotNull;
 import tech.alexnijjar.golemoverhaul.common.config.GolemOverhaulConfig;
 import tech.alexnijjar.golemoverhaul.common.entities.AdditionalBeeData;
@@ -70,10 +74,10 @@ public class HoneyGolem extends BaseGolem implements RangedAttackMob, IShearable
     }
 
     public static boolean checkMobSpawnRules(EntityType<? extends Mob> type, LevelAccessor level,
-                                             MobSpawnType spawnType, BlockPos pos, RandomSource random) {
+                                             EntitySpawnReason spawnReason, BlockPos pos, RandomSource random) {
         if (!GolemOverhaulConfig.spawnHoneyGolems || !GolemOverhaulConfig.allowSpawning)
             return false;
-        return Mob.checkMobSpawnRules(type, level, spawnType, pos, random);
+        return Mob.checkMobSpawnRules(type, level, spawnReason, pos, random);
     }
 
     @Override
@@ -83,34 +87,31 @@ public class HoneyGolem extends BaseGolem implements RangedAttackMob, IShearable
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putByte("HoneyLevel", this.getHoneyLevel());
-        ListTag beeTag = new ListTag();
+    protected void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putByte("HoneyLevel", this.getHoneyLevel());
+        ValueOutput.ValueOutputList beeList = output.childrenList("Bees");
         for (BeeData bee : bees) {
-            CompoundTag tag = new CompoundTag();
-            tag.put("EntityData", bee.tag);
-            tag.putInt("TicksInHive", bee.ticks);
-            tag.putInt("MinOccupationTicks", bee.minOccupationTicks);
-            beeTag.add(tag);
+            ValueOutput entry = beeList.addChild();
+            entry.store("EntityData", CompoundTag.CODEC, bee.tag);
+            entry.putInt("TicksInHive", bee.ticks);
+            entry.putInt("MinOccupationTicks", bee.minOccupationTicks);
         }
-        compound.put("Bees", beeTag);
-        compound.putBoolean("HasPopulatedInitialBees", hasPopulatedInitialBees);
+        output.putBoolean("HasPopulatedInitialBees", hasPopulatedInitialBees);
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        this.setHoneyLevel(compound.getByte("HoneyLevel"));
-        ListTag beeTag = compound.getList("Bees", Tag.TAG_COMPOUND);
-        for (int i = 0; i < beeTag.size(); i++) {
-            CompoundTag tag = beeTag.getCompound(i);
-            bees.add(new BeeData(
-                    tag.getCompound("EntityData"),
-                    tag.getInt("TicksInHive"),
-                    tag.getInt("MinOccupationTicks")));
+    protected void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        this.setHoneyLevel(input.getByteOr("HoneyLevel", (byte) 0));
+        bees.clear();
+        for (ValueInput entry : input.childrenListOrEmpty("Bees")) {
+            entry.read("EntityData", CompoundTag.CODEC).ifPresent(tag -> bees.add(new BeeData(
+                    tag,
+                    entry.getIntOr("TicksInHive", 0),
+                    entry.getIntOr("MinOccupationTicks", 2400))));
         }
-        this.hasPopulatedInitialBees = compound.getBoolean("HasPopulatedInitialBees");
+        this.hasPopulatedInitialBees = input.getBooleanOr("HasPopulatedInitialBees", false);
     }
 
     @Override
@@ -202,20 +203,20 @@ public class HoneyGolem extends BaseGolem implements RangedAttackMob, IShearable
     private void populateInitialBees() {
         final int count = 2 + level().getRandom().nextInt(4);
         for (int i = 0; i < count; i++) {
-            Bee bee = Objects.requireNonNull(EntityType.BEE.create(level()));
+            Bee bee = Objects.requireNonNull(EntityType.BEE.create(level(), EntitySpawnReason.LOAD));
             ((AdditionalBeeData) bee).golemoverhaul$setOwner(this.getUUID());
-            this.bees.add(new BeeData(bee.saveWithoutId(new CompoundTag()), 0, 2400));
+            this.bees.add(new BeeData(saveBee(bee), 0, 2400));
         }
         this.setHoneyLevel((byte) count);
     }
 
     @Override
-    protected void customServerAiStep() {
+    protected void customServerAiStep(ServerLevel level) {
         if (!bees.isEmpty() && level().getRandom().nextDouble() < 0.005) {
             playSound(SoundEvents.BEEHIVE_WORK);
         }
 
-        if (!level().isNight() && !level().isRaining()) {
+        if (!level().isDarkOutside() && !level().isRaining()) {
             for (int i = 0; i < bees.size(); i++) {
                 BeeData bee = bees.get(i);
                 bee.ticks++;
@@ -259,7 +260,7 @@ public class HoneyGolem extends BaseGolem implements RangedAttackMob, IShearable
             setHoneyLevel((byte) 0);
         }
 
-        return List.of(new ItemStack(ModItems.HONEY_BLOB.get(), 5 + level().random.nextInt(8)),
+        return List.of(new ItemStack(ModItems.HONEY_BLOB.get(), 5 + level().getRandom().nextInt(8)),
                 new ItemStack(Items.HONEYCOMB, 3));
     }
 
@@ -288,13 +289,13 @@ public class HoneyGolem extends BaseGolem implements RangedAttackMob, IShearable
     }
 
     @Override
-    public boolean hurt(DamageSource source, float amount) {
+    public boolean hurtServer(ServerLevel level, DamageSource source, float amount) {
         if (!bees.isEmpty() && source.getEntity() instanceof LivingEntity entity && canAttack(entity)) {
             if (entity instanceof Player player && player.isCreative())
-                return super.hurt(source, amount);
+                return super.hurtServer(level, source, amount);
             this.releaseAllBees().forEach(bee -> bee.setTarget(entity));
         }
-        return super.hurt(source, amount);
+        return super.hurtServer(level, source, amount);
     }
 
     public boolean canPutBee() {
@@ -305,7 +306,7 @@ public class HoneyGolem extends BaseGolem implements RangedAttackMob, IShearable
         if (!canPutBee())
             return;
         ((AdditionalBeeData) bee).golemoverhaul$setOwner(this.getUUID());
-        bees.add(new BeeData(bee.saveWithoutId(new CompoundTag()), 0, 2400));
+        bees.add(new BeeData(saveBee(bee), 0, 2400));
         if (bee.hasNectar() && !isFullOfHoney()) {
             setHoneyLevel((byte) (getHoneyLevel() + 1));
             if (getHealth() < getMaxHealth()) {
@@ -320,8 +321,8 @@ public class HoneyGolem extends BaseGolem implements RangedAttackMob, IShearable
 
     private Bee releaseBee(int index) {
         BeeData data = bees.get(index);
-        Bee bee = Objects.requireNonNull(EntityType.BEE.create(level()));
-        bee.load(data.tag);
+        Bee bee = Objects.requireNonNull(EntityType.BEE.create(level(), EntitySpawnReason.LOAD));
+        bee.load(TagValueInput.create(ProblemReporter.DISCARDING, registryAccess(), data.tag));
         bee.setPos(getX(), getY(), getZ());
         bee.dropOffNectar();
         bee.setHealth(bee.getMaxHealth());
@@ -341,6 +342,14 @@ public class HoneyGolem extends BaseGolem implements RangedAttackMob, IShearable
             removedBees.add(bee);
         }
         return removedBees;
+    }
+
+    // Entities serialise through ValueOutput now; the bee's NBT is captured into a CompoundTag so the
+    // hive list can keep the same shape it had upstream.
+    private CompoundTag saveBee(Bee bee) {
+        TagValueOutput output = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, registryAccess());
+        bee.saveWithoutId(output);
+        return output.buildResult();
     }
 
     private static final class BeeData {

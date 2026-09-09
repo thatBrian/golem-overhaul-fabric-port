@@ -1,14 +1,17 @@
 package tech.alexnijjar.golemoverhaul.common.entities.golems;
 
+import com.geckolib.animatable.manager.AnimatableManager;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.state.AnimationTest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
@@ -26,16 +29,18 @@ import net.minecraft.world.entity.ai.behavior.BehaviorUtils;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.PanicGoal;
 import net.minecraft.world.entity.ai.util.LandRandomPos;
-import net.minecraft.world.entity.animal.AbstractGolem;
+import net.minecraft.world.entity.animal.golem.AbstractGolem;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.projectile.AbstractArrow;
+import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.world.level.gamerules.GameRules;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets;
@@ -43,10 +48,6 @@ import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import software.bernie.geckolib.animation.AnimatableManager;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.animation.PlayState;
 import tech.alexnijjar.golemoverhaul.GolemOverhaul;
 import tech.alexnijjar.golemoverhaul.common.config.GolemOverhaulConfig;
 import tech.alexnijjar.golemoverhaul.common.constants.ConstantAnimations;
@@ -65,7 +66,7 @@ public class BarrelGolem extends BaseGolem {
     private static final Vec3i ITEM_PICKUP_REACH = new Vec3i(2, 0, 2);
 
     public static final ResourceKey<LootTable> BARTERING_LOOT = ResourceKey.create(Registries.LOOT_TABLE,
-            ResourceLocation.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "gameplay/barrel_golem_bartering"));
+            Identifier.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "gameplay/barrel_golem_bartering"));
 
     public static final byte CHANGE_STATE_EVENT_ID = 8;
     public static final byte BARTER_EVENT_ID = 9;
@@ -96,19 +97,19 @@ public class BarrelGolem extends BaseGolem {
     }
 
     public static boolean checkMobSpawnRules(EntityType<? extends Mob> type, LevelAccessor level,
-                                             MobSpawnType spawnType, BlockPos pos, RandomSource random) {
+                                             EntitySpawnReason spawnReason, BlockPos pos, RandomSource random) {
         if (!GolemOverhaulConfig.spawnBarrelGolems || !GolemOverhaulConfig.allowSpawning)
             return false;
-        return Mob.checkMobSpawnRules(type, level, spawnType, pos, random);
+        return Mob.checkMobSpawnRules(type, level, spawnReason, pos, random);
     }
 
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
         super.registerControllers(controllers);
 
-        controllers.add(new AnimationController<>(this, "open_controller", state -> {
+        controllers.add(new AnimationController<BarrelGolem>("open_controller", state -> {
             if (isBartering()) {
-                state.resetCurrentAnimation();
+                state.controller().reset();
                 return PlayState.STOP;
             }
 
@@ -120,30 +121,30 @@ public class BarrelGolem extends BaseGolem {
                 return state.setAndContinue(ConstantAnimations.OPEN);
             }
 
-            if (level().isNight() || !this.isOpen()) {
+            if (level().isDarkOutside() || !this.isOpen()) {
                 return state.setAndContinue(ConstantAnimations.HIDE);
             }
 
-            state.resetCurrentAnimation();
+            state.controller().reset();
             return PlayState.STOP;
         }));
 
-        controllers.add(new AnimationController<>(this, "barter_controller", 5, state -> {
+        controllers.add(new AnimationController<BarrelGolem>("barter_controller", 5, state -> {
             if (this.isBartering()) {
                 return state.setAndContinue(ConstantAnimations.BARTER);
             }
-            state.resetCurrentAnimation();
+            state.controller().reset();
             return PlayState.STOP;
         }).setSoundKeyframeHandler(event -> level().playLocalSound(blockPosition(),
                 ModSoundEvents.BARREL_GOLEM_BARTER.get(), getSoundSource(), 1, 1, false)));
     }
 
     @Override
-    public PlayState getMoveAnimation(AnimationState<BaseGolem> state, boolean moving) {
+    public PlayState getMoveAnimation(AnimationTest<BaseGolem> state, boolean moving) {
         if (!this.isOpen())
             return PlayState.STOP;
         if (isBartering()) {
-            state.resetCurrentAnimation();
+            state.controller().reset();
             return PlayState.STOP;
         }
 
@@ -152,7 +153,7 @@ public class BarrelGolem extends BaseGolem {
     }
 
     @Override
-    public PlayState getAttackAnimation(AnimationState<? extends BaseGolem> state) {
+    public PlayState getAttackAnimation(AnimationTest<? extends BaseGolem> state) {
         return PlayState.STOP;
     }
 
@@ -164,22 +165,22 @@ public class BarrelGolem extends BaseGolem {
     }
 
     @Override
-    public boolean canBeCollidedWith() {
+    public boolean canBeCollidedWith(@Nullable Entity entity) {
         return this.isAlive() && !this.isOpen();
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putBoolean("Open", this.isOpen());
-        compound.putInt("ChangeStateTicks", this.changeStateTicks);
+    protected void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putBoolean("Open", this.isOpen());
+        output.putInt("ChangeStateTicks", this.changeStateTicks);
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        this.setOpen(compound.getBoolean("Open"), false);
-        this.changeStateTicks = compound.getInt("ChangeStateTicks");
+    protected void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        this.setOpen(input.getBooleanOr("Open", true), false);
+        this.changeStateTicks = input.getIntOr("ChangeStateTicks", 0);
     }
 
     @Override
@@ -268,15 +269,15 @@ public class BarrelGolem extends BaseGolem {
 
     @Override
     public @Nullable SpawnGroupData finalizeSpawn(ServerLevelAccessor serverLevelAccessor,
-                                                  DifficultyInstance difficultyInstance, MobSpawnType mobSpawnType,
+                                                  DifficultyInstance difficultyInstance, EntitySpawnReason spawnReason,
                                                   @Nullable SpawnGroupData spawnGroupData) {
         setOpen(level().getSkyDarken() < 4, false);
         changeStateTicks = this.getRandomChangeInterval();
-        return super.finalizeSpawn(serverLevelAccessor, difficultyInstance, mobSpawnType, spawnGroupData);
+        return super.finalizeSpawn(serverLevelAccessor, difficultyInstance, spawnReason, spawnGroupData);
     }
 
     @Override
-    public boolean hurt(DamageSource source, float amount) {
+    public boolean hurtServer(ServerLevel level, DamageSource source, float amount) {
         if (!this.isOpen()) {
             if (source.getDirectEntity() instanceof AbstractArrow arrow && !arrow.isOnFire()) {
                 return false;
@@ -290,7 +291,7 @@ public class BarrelGolem extends BaseGolem {
                     this.setOpen(true, true);
             }
         }
-        return super.hurt(source, amount);
+        return super.hurtServer(level, source, amount);
     }
 
     @Override
@@ -315,7 +316,7 @@ public class BarrelGolem extends BaseGolem {
         this.openUpTicks = Math.max(0, this.openUpTicks - 1);
 
         if (!level().isClientSide()) {
-            if (this.changeStateTicks == 0 && level().isDay() && !isWakingUp()) {
+            if (this.changeStateTicks == 0 && level().isBrightOutside() && !isWakingUp()) {
                 this.setOpen(!this.isOpen(), true);
                 this.changeStateTicks = this.getRandomChangeInterval();
                 this.level().broadcastEntityEvent(this, CHANGE_STATE_EVENT_ID);
@@ -325,7 +326,7 @@ public class BarrelGolem extends BaseGolem {
                 this.navigation.stop();
             }
 
-            if (!level().isDay() && isOpen()) {
+            if (!level().isBrightOutside() && isOpen()) {
                 this.setOpen(false, true);
             } else if (finishedWakeUp() && !isOpen()) {
                 this.setOpen(true, false);
@@ -365,9 +366,9 @@ public class BarrelGolem extends BaseGolem {
     }
 
     @Override
-    protected void pickUpItem(ItemEntity itemEntity) {
+    protected void pickUpItem(ServerLevel level, ItemEntity itemEntity) {
         ItemStack stack = itemEntity.getItem();
-        ItemStack equippedStack = this.equipItemIfPossible(stack.copy());
+        ItemStack equippedStack = this.equipItemIfPossible(level, stack.copy());
         if (!equippedStack.isEmpty()) {
             this.onItemPickup(itemEntity);
             this.take(itemEntity, 1);
@@ -389,8 +390,8 @@ public class BarrelGolem extends BaseGolem {
     }
 
     @Override
-    public boolean wantsToPickUp(ItemStack stack) {
-        return this.level().getGameRules().getBoolean(GameRules.RULE_MOBGRIEFING) && canBarterWith(stack);
+    public boolean wantsToPickUp(ServerLevel level, ItemStack stack) {
+        return level.getGameRules().get(GameRules.MOB_GRIEFING) && canBarterWith(stack);
     }
 
     @Override
@@ -438,7 +439,7 @@ public class BarrelGolem extends BaseGolem {
         if (level() instanceof ServerLevel level) {
             LootTable lootTable = level.getServer().reloadableRegistries().getLootTable(BARTERING_LOOT);
             return lootTable.getRandomItems(new LootParams.Builder(level)
-                    .withParameter(LootContextParams.THIS_ENTITY, this).create(LootContextParamSets.PIGLIN_BARTER));
+                    .withParameter(LootContextParams.THIS_ENTITY, this).create(LootContextParamSets.PIGLIN_BARTER), level.getRandom());
         }
         return List.of();
     }
@@ -494,10 +495,10 @@ public class BarrelGolem extends BaseGolem {
 
         @Override
         public boolean canUse() {
-            if (isOpen() && !isBartering()) {
+            if (isOpen() && !isBartering() && level() instanceof ServerLevel serverLevel) {
                 ItemEntity nearest = level()
                         .getEntitiesOfClass(ItemEntity.class, getBoundingBox().inflate(16),
-                                stack -> wantsToPickUp(stack.getItem()))
+                                stack -> wantsToPickUp(serverLevel, stack.getItem()))
                         .stream()
                         .findFirst()
                         .orElse(null);

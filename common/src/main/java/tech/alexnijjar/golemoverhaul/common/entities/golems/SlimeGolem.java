@@ -1,11 +1,15 @@
 package tech.alexnijjar.golemoverhaul.common.entities.golems;
 
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.RawAnimation;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.state.AnimationTest;
 import net.minecraft.core.BlockPos;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.tags.BiomeTags;
@@ -15,18 +19,16 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.animal.AbstractGolem;
+import net.minecraft.world.entity.animal.golem.AbstractGolem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.*;
 import net.minecraft.world.level.levelgen.WorldgenRandom;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.animation.PlayState;
-import software.bernie.geckolib.animation.RawAnimation;
 import tech.alexnijjar.golemoverhaul.common.config.GolemOverhaulConfig;
 import tech.alexnijjar.golemoverhaul.common.constants.ConstantAnimations;
 import tech.alexnijjar.golemoverhaul.common.entities.golems.base.BaseGolem;
@@ -58,46 +60,47 @@ public class SlimeGolem extends BaseGolem {
     }
 
     @Override
-    public AnimationController<?> getMovementController() {
+    public AnimationController<BaseGolem> getMovementController() {
         return super.getMovementController()
                 .setSoundKeyframeHandler(event -> level().playLocalSound(blockPosition(), this.getStepSound(),
                         getSoundSource(), 0.3f, 1, false));
     }
 
     public static boolean checkSlimeSpawnRules(EntityType<? extends Mob> type, LevelAccessor level,
-            MobSpawnType spawnType, BlockPos pos, RandomSource random) {
+            EntitySpawnReason spawnReason, BlockPos pos, RandomSource random) {
         if (!GolemOverhaulConfig.spawnSlimeGolems || !GolemOverhaulConfig.allowSpawning)
             return false;
 
-        if (MobSpawnType.isSpawner(spawnType)) {
-            return Mob.checkMobSpawnRules(type, level, spawnType, pos, random);
+        if (EntitySpawnReason.isSpawner(spawnReason)) {
+            return Mob.checkMobSpawnRules(type, level, spawnReason, pos, random);
         }
 
         if (level.getBiome(pos).is(BiomeTags.ALLOWS_SURFACE_SLIME_SPAWNS)
                 && pos.getY() > 50
                 && pos.getY() < 70
                 && random.nextFloat() < 0.5f
-                && random.nextFloat() < level.getMoonBrightness()
+                // Moon brightness is per-position and server-only since 26.1.
+                && random.nextFloat() < (level instanceof ServerLevelAccessor serverLevel ? serverLevel.getLevel().getMoonBrightness(pos) : 0f)
                 && level.getMaxLocalRawBrightness(pos) <= random.nextInt(8)) {
-            return checkMobSpawnRules(type, level, spawnType, pos, random);
+            return checkMobSpawnRules(type, level, spawnReason, pos, random);
         }
 
         if (!(level instanceof WorldGenLevel))
             return false;
 
         // Slime chunk spawning taken from Slime#checkSlimeSpawnRules
-        ChunkPos chunkpos = new ChunkPos(pos);
+        ChunkPos chunkpos = ChunkPos.containing(pos);
         boolean isSlimeChunk = WorldgenRandom
-                .seedSlimeChunk(chunkpos.x, chunkpos.z, ((WorldGenLevel) level).getSeed(), 987234911L).nextInt(10) == 0;
+                .seedSlimeChunk(chunkpos.x(), chunkpos.z(), ((WorldGenLevel) level).getSeed(), 987234911L).nextInt(10) == 0;
         if (random.nextInt(10) == 0 && isSlimeChunk && pos.getY() < 40) {
-            return Mob.checkMobSpawnRules(type, level, spawnType, pos, random);
+            return Mob.checkMobSpawnRules(type, level, spawnReason, pos, random);
         }
 
         return false;
     }
 
     @Override
-    public PlayState getAttackAnimation(AnimationState<? extends BaseGolem> state) {
+    public PlayState getAttackAnimation(AnimationTest<? extends BaseGolem> state) {
         return state.setAndContinue(this.attackArm);
     }
 
@@ -108,16 +111,16 @@ public class SlimeGolem extends BaseGolem {
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putString("Size", this.getSize().name().toLowerCase(Locale.ROOT));
+    protected void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putString("Size", this.getSize().name().toLowerCase(Locale.ROOT));
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
+    protected void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
 
-        var sizeStr = compound.getString("Size").toUpperCase(Locale.ROOT);
+        var sizeStr = input.getStringOr("Size", "").toUpperCase(Locale.ROOT);
         if (sizeStr.isEmpty()) {
             this.setSize(Size.LARGE, false);
         } else {
@@ -160,8 +163,8 @@ public class SlimeGolem extends BaseGolem {
     }
 
     @Override
-    public boolean doHurtTarget(@NotNull Entity target) {
-        if (super.doHurtTarget(target)) {
+    public boolean doHurtTarget(ServerLevel level, @NotNull Entity target) {
+        if (super.doHurtTarget(level, target)) {
             this.playSound(getSize().isLarge() ? SoundEvents.SLIME_SQUISH : SoundEvents.SLIME_SQUISH_SMALL, 1, 1);
             return true;
         }
@@ -193,7 +196,7 @@ public class SlimeGolem extends BaseGolem {
      */
     @Override
     public void remove(Entity.RemovalReason reason) {
-        if (!this.level().isClientSide && this.getSize().isLarge() && this.isDeadOrDying()) {
+        if (!this.level().isClientSide() && this.getSize().isLarge() && this.isDeadOrDying()) {
             Component name = this.getCustomName();
             boolean noAi = this.isNoAi();
             float width = this.getDimensions(this.getPose()).width();
@@ -203,7 +206,7 @@ public class SlimeGolem extends BaseGolem {
             for (int i = 0; i < amount; ++i) {
                 float x = ((float) (i % 2) - 0.5f) * halfWidth;
                 float z = ((float) (i / 2) - 0.5f) * halfWidth;
-                SlimeGolem slime = ModEntityTypes.SLIME_GOLEM.get().create(this.level());
+                SlimeGolem slime = ModEntityTypes.SLIME_GOLEM.get().create(this.level(), EntitySpawnReason.TRIGGERED);
                 if (slime != null) {
                     if (this.isPersistenceRequired()) {
                         slime.setPersistenceRequired();
@@ -214,7 +217,7 @@ public class SlimeGolem extends BaseGolem {
                     slime.setInvulnerable(this.isInvulnerable());
                     slime.wasSplit = true;
                     slime.setSize(Size.SMALL, true);
-                    slime.moveTo(this.getX() + x, this.getY() + 0.5, this.getZ() + z, this.random.nextFloat() * 360, 0);
+                    slime.snapTo(this.getX() + x, this.getY() + 0.5, this.getZ() + z, this.random.nextFloat() * 360, 0);
                     this.level().addFreshEntity(slime);
                 }
             }
@@ -226,11 +229,11 @@ public class SlimeGolem extends BaseGolem {
     @Nullable
     @Override
     public SpawnGroupData finalizeSpawn(ServerLevelAccessor level, DifficultyInstance difficultyInstance,
-                                        MobSpawnType mobSpawnType, @Nullable SpawnGroupData spawnGroupData) {
+                                        EntitySpawnReason spawnReason, @Nullable SpawnGroupData spawnGroupData) {
         if (!this.wasSplit) {
             this.setSize(level.getRandom().nextBoolean() ? Size.LARGE : Size.SMALL, true);
         }
-        return super.finalizeSpawn(level, difficultyInstance, mobSpawnType, spawnGroupData);
+        return super.finalizeSpawn(level, difficultyInstance, spawnReason, spawnGroupData);
     }
 
     @Override
@@ -251,8 +254,8 @@ public class SlimeGolem extends BaseGolem {
     }
 
     @Override
-    protected AABB getAttackBoundingBox() {
-        return super.getAttackBoundingBox().inflate(0.5f, 0, 0.5f);
+    protected AABB getAttackBoundingBox(double horizontalExpansion) {
+        return super.getAttackBoundingBox(horizontalExpansion).inflate(0.5f, 0, 0.5f);
     }
 
     public enum Size {

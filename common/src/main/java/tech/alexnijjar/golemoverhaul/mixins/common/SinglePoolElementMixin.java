@@ -2,10 +2,10 @@ package tech.alexnijjar.golemoverhaul.mixins.common;
 
 import com.mojang.datafixers.util.Either;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Rotation;
@@ -33,12 +33,12 @@ import tech.alexnijjar.golemoverhaul.common.registry.ModEntityTypes;
 public abstract class SinglePoolElementMixin {
 
     @Unique
-    private static final ResourceLocation golemoverhaul$IRON_GOLEM_STRUCTURE =
-            ResourceLocation.withDefaultNamespace("village/common/iron_golem");
+    private static final Identifier golemoverhaul$IRON_GOLEM_STRUCTURE =
+            Identifier.withDefaultNamespace("village/common/iron_golem");
 
     @Shadow
     @Final
-    protected Either<ResourceLocation, StructureTemplate> template;
+    protected Either<Identifier, StructureTemplate> template;
 
     @Shadow
     protected abstract StructurePlaceSettings getSettings(Rotation rotation, BoundingBox boundingBox,
@@ -68,13 +68,13 @@ public abstract class SinglePoolElementMixin {
             var settings = this.getSettings(rotation, box, liquidSettings, keepJigsaws);
 
             var barrelGolemEntityType = ModEntityTypes.BARREL_GOLEM.get();
-            if (BarrelGolem.checkMobSpawnRules(barrelGolemEntityType, worldGenLevel, MobSpawnType.SPAWNER, offset,
+            if (BarrelGolem.checkMobSpawnRules(barrelGolemEntityType, worldGenLevel, EntitySpawnReason.SPAWNER, offset,
                     worldGenLevel.getRandom())) {
                 golemoverhaul$spawnAdditionalGolem(barrelGolemEntityType, worldGenLevel, settings, offset);
             }
 
             var hayGolemEntityType = ModEntityTypes.HAY_GOLEM.get();
-            if (HayGolem.checkMobSpawnRules(hayGolemEntityType, worldGenLevel, MobSpawnType.SPAWNER, offset,
+            if (HayGolem.checkMobSpawnRules(hayGolemEntityType, worldGenLevel, EntitySpawnReason.SPAWNER, offset,
                     worldGenLevel.getRandom())) {
                 golemoverhaul$spawnAdditionalGolem(hayGolemEntityType, worldGenLevel, settings, offset);
             }
@@ -84,17 +84,17 @@ public abstract class SinglePoolElementMixin {
     @Unique
     private <T extends BaseGolem> void golemoverhaul$spawnAdditionalGolem(EntityType<T> entityType, WorldGenLevel worldGenLevel,
                                                                           StructurePlaceSettings settings, BlockPos offset) {
-        var golem = entityType.create(worldGenLevel.getLevel());
+        var golem = entityType.create(worldGenLevel.getLevel(), EntitySpawnReason.STRUCTURE);
         if (golem == null) return;
 
         var spawnPos = new Vec3(offset.getX() + 0.5, offset.getY() + 1, offset.getZ() + 0.5);
 
         float yRot = golem.rotate(settings.getRotation());
         yRot += golem.mirror(settings.getMirror()) - golem.getYRot();
-        golem.moveTo(spawnPos.x, spawnPos.y, spawnPos.z, yRot, golem.getXRot());
+        golem.snapTo(spawnPos.x, spawnPos.y, spawnPos.z, yRot, golem.getXRot());
         if (settings.shouldFinalizeEntities()) {
             golem.finalizeSpawn(worldGenLevel,
-                    worldGenLevel.getCurrentDifficultyAt(BlockPos.containing(spawnPos)), MobSpawnType.STRUCTURE, null);
+                    worldGenLevel.getCurrentDifficultyAt(BlockPos.containing(spawnPos)), EntitySpawnReason.STRUCTURE, null);
         }
 
         worldGenLevel.addFreshEntityWithPassengers(golem);

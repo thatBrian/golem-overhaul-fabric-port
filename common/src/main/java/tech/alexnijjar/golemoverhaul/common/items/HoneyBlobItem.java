@@ -4,10 +4,9 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.stats.Stats;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResultHolder;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import tech.alexnijjar.golemoverhaul.common.entities.projectiles.HoneyBlobProjectile;
@@ -19,13 +18,13 @@ public class HoneyBlobItem extends Item {
     }
 
     @Override
-    public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand usedHand) {
+    public InteractionResult use(Level level, Player player, InteractionHand usedHand) {
         var stack = player.getItemInHand(usedHand);
         level.playSound(null, player.getX(), player.getY(), player.getZ(), SoundEvents.SLIME_ATTACK, SoundSource.NEUTRAL,
             0.5f,
             0.4f / (level.getRandom().nextFloat() * 0.4f + 0.8f)
         );
-        if (!level.isClientSide) {
+        if (!level.isClientSide()) {
             var projectile = new HoneyBlobProjectile(level, player);
             Vec3 lookAngle = player.getLookAngle();
             projectile.setPos(
@@ -43,6 +42,6 @@ public class HoneyBlobItem extends Item {
             stack.shrink(1);
         }
 
-        return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
+        return InteractionResult.SUCCESS;
     }
 }

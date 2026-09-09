@@ -1,13 +1,18 @@
 package tech.alexnijjar.golemoverhaul.common.entities.projectiles;
 
+import com.geckolib.animatable.GeoEntity;
+import com.geckolib.animatable.instance.AnimatableInstanceCache;
+import com.geckolib.animatable.manager.AnimatableManager;
+import com.geckolib.util.GeckoLibUtil;
 import net.minecraft.core.particles.ItemParticleOption;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.projectile.ThrowableItemProjectile;
+import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrowableItemProjectile;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -15,10 +20,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import org.jetbrains.annotations.Nullable;
-import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
-import software.bernie.geckolib.animation.AnimatableManager;
-import software.bernie.geckolib.util.GeckoLibUtil;
 import tech.alexnijjar.golemoverhaul.common.entities.golems.TerracottaGolem;
 import tech.alexnijjar.golemoverhaul.common.registry.ModEntityTypes;
 
@@ -46,7 +47,7 @@ public class MudBallProjectile extends ThrowableItemProjectile implements GeoEnt
     @Nullable
     private ParticleOptions getParticle() {
         ItemStack stack = getItem();
-        return stack.isEmpty() ? null : new ItemParticleOption(ParticleTypes.ITEM, stack);
+        return stack.isEmpty() ? null : new ItemParticleOption(ParticleTypes.ITEM, stack.getItem());
     }
 
     @Override
@@ -65,7 +66,9 @@ public class MudBallProjectile extends ThrowableItemProjectile implements GeoEnt
         super.onHitEntity(result);
         if (result.getEntity() instanceof TerracottaGolem) return;
         Entity entity = result.getEntity();
-        entity.hurt(damageSources().thrown(this, getOwner()), 4);
+        if (level() instanceof ServerLevel serverLevel) {
+            entity.hurtServer(serverLevel, damageSources().thrown(this, getOwner()), 4);
+        }
     }
 
     @Override

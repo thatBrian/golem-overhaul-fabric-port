@@ -1,6 +1,6 @@
 package tech.alexnijjar.golemoverhaul.common.constants;
 
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animation.RawAnimation;
 
 public class ConstantAnimations {
 
