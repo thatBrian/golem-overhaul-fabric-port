@@ -54,7 +54,7 @@ dependencies {
     implementation "dev.architectury:architectury-fabric:${architectury_api_version}"
     implementation "com.teamresourceful.resourcefullib:resourcefullib-fabric-26.1:${resourcefullib_version}"
     implementation "com.teamresourceful.resourcefulconfig:resourcefulconfig-fabric-26.1:${resourcefulconfig_version}"
-    implementation "maven.modrinth:geckolib:${geckolib_version}"
+    implementation "maven.modrinth:geckolib:${geckolib_modrinth_version_id}"
 
     // MixinExtras: bundled by Fabric Loader at runtime; needed at compile time for @WrapOperation/@Local.
     compileOnly "io.github.llamalad7:mixinextras-fabric:${mixinextras_version}"
