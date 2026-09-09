@@ -1,13 +1,13 @@
 package tech.alexnijjar.golemoverhaul.common.items;
 
-import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.core.dispenser.BlockSource;
 import net.minecraft.core.dispenser.DefaultDispenseItemBehavior;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.stats.Stats;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResultHolder;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.*;
@@ -16,7 +16,6 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.DispenserBlock;
 import tech.alexnijjar.golemoverhaul.common.registry.ModEntityTypes;
 
-@MethodsReturnNonnullByDefault
 public class CoalGolemItem extends Item {
 
     public CoalGolemItem(Properties properties) {
@@ -24,9 +23,9 @@ public class CoalGolemItem extends Item {
     }
 
     @Override
-    public void releaseUsing(ItemStack stack, Level level, LivingEntity livingEntity, int remainingTime) {
+    public boolean releaseUsing(ItemStack stack, Level level, LivingEntity livingEntity, int remainingTime) {
         if (!(livingEntity instanceof Player player)) {
-            return;
+            return false;
         }
 
         boolean shouldLight = false;
@@ -37,7 +36,7 @@ public class CoalGolemItem extends Item {
             level.playSound(player, player.getX(), player.getY(), player.getZ(), SoundEvents.FLINTANDSTEEL_USE,
                     SoundSource.PLAYERS, 1.0F, 1.0F);
             if (!level.isClientSide()) {
-                stackInOtherHand.hurtAndBreak(1, player, LivingEntity.getSlotForHand(otherHand));
+                stackInOtherHand.hurtAndBreak(1, player, otherHand);
             }
             shouldLight = true;
         } else if (stackInOtherHand.getItem() instanceof FireChargeItem) {
@@ -53,7 +52,7 @@ public class CoalGolemItem extends Item {
                 SoundSource.PLAYERS, 0.5F, 0.4F / (level.getRandom().nextFloat() * 0.4F + 0.8F));
 
         if (level.isClientSide()) {
-            return;
+            return true;
         }
 
         var timeHeld = this.getUseDuration(stack, player) - remainingTime;
@@ -72,9 +71,9 @@ public class CoalGolemItem extends Item {
 
         var lookAngle = player.getLookAngle();
         for (var i = 0; i < throwCount; i++) {
-            var coalGolem = ModEntityTypes.COAL_GOLEM.get().create(level);
+            var coalGolem = ModEntityTypes.COAL_GOLEM.get().create(level, EntitySpawnReason.SPAWN_ITEM_USE);
             if (coalGolem == null) {
-                return;
+                return true;
             }
 
             coalGolem.setPlayerCreated();
@@ -105,7 +104,8 @@ public class CoalGolemItem extends Item {
             stack.shrink(throwCount);
         }
 
-        player.getCooldowns().addCooldown(this, 10);
+        player.getCooldowns().addCooldown(stack, 10);
+        return true;
     }
 
     @Override
@@ -114,14 +114,14 @@ public class CoalGolemItem extends Item {
     }
 
     @Override
-    public UseAnim getUseAnimation(ItemStack stack) {
-        return UseAnim.BOW;
+    public ItemUseAnimation getUseAnimation(ItemStack stack) {
+        return ItemUseAnimation.BOW;
     }
 
     @Override
-    public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand usedHand) {
+    public InteractionResult use(Level level, Player player, InteractionHand usedHand) {
         player.startUsingItem(usedHand);
-        return InteractionResultHolder.consume(player.getItemInHand(usedHand));
+        return InteractionResult.CONSUME;
     }
 
     public static float getPowerForTime(int timeHeld) {
@@ -142,7 +142,7 @@ public class CoalGolemItem extends Item {
             var targetPos = source.pos().relative(direction);
             var targetBlockState = level.getBlockState(targetPos);
 
-            var coalGolem = ModEntityTypes.COAL_GOLEM.get().create(level);
+            var coalGolem = ModEntityTypes.COAL_GOLEM.get().create(level, EntitySpawnReason.DISPENSER);
             if (coalGolem == null) {
                 return stack;
             }

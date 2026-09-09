@@ -5,7 +5,7 @@ import com.teamresourceful.resourcefullib.common.network.Packet;
 import com.teamresourceful.resourcefullib.common.network.base.PacketType;
 import com.teamresourceful.resourcefullib.common.network.base.ServerboundPacketType;
 import com.teamresourceful.resourcefullib.common.network.defaults.DatalessPacketType;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.Player;
 import tech.alexnijjar.golemoverhaul.GolemOverhaul;
 import tech.alexnijjar.golemoverhaul.common.entities.golems.NetheriteGolem;
@@ -24,7 +24,7 @@ public class ServerboundGolemSummonPacket implements Packet<ServerboundGolemSumm
     private static class Type extends DatalessPacketType<ServerboundGolemSummonPacket> implements ServerboundPacketType<ServerboundGolemSummonPacket> {
 
         public Type() {
-            super(ResourceLocation.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "golem_summon"), ServerboundGolemSummonPacket::new);
+            super(Identifier.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "golem_summon"), ServerboundGolemSummonPacket::new);
         }
 
         @Override

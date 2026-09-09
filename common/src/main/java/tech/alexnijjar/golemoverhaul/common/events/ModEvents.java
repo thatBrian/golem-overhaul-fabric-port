@@ -5,7 +5,7 @@ import dev.architectury.event.events.common.BlockEvent;
 import dev.architectury.event.events.common.InteractionEvent;
 import dev.architectury.event.events.common.LifecycleEvent;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ShearsItem;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.DispenserBlock;
@@ -32,7 +32,7 @@ public class ModEvents {
                 return EventResult.pass();
             }
 
-            if (entity.level().isClientSide) {
+            if (!(entity.level() instanceof ServerLevel serverLevel)) {
                 return EventResult.pass();
             }
 
@@ -47,14 +47,14 @@ public class ModEvents {
 
             var drops = target.onSheared();
             drops.forEach(dropStack -> {
-                var droppedItem = entity.spawnAtLocation(dropStack, 1.0F);
+                var droppedItem = entity.spawnAtLocation(serverLevel, dropStack, 1.0F);
                 if (droppedItem != null) {
                     var rand = new Random();
                     droppedItem.setDeltaMovement(droppedItem.getDeltaMovement().add((rand.nextFloat() - rand.nextFloat()) * 0.1F, rand.nextFloat() * 0.05F, (rand.nextFloat() - rand.nextFloat()) * 0.1F));
                 }
             });
 
-            stack.hurtAndBreak(1, player, LivingEntity.getSlotForHand(hand));
+            stack.hurtAndBreak(1, player, hand);
 
             return EventResult.interruptTrue();
         });
@@ -78,18 +78,18 @@ public class ModEvents {
     }
 
     private static void registerHayGolemTramplePrevention() {
-        InteractionEvent.FARMLAND_TRAMPLE.register((level, blockPos, blockState, v, entity) -> {
+        InteractionEvent.FARMLAND_TRAMPLE.register((level, blockPos, blockState, distance, entity) -> {
             if (level.isClientSide()) {
-                return EventResult.pass();
+                return InteractionResult.PASS;
             }
 
             var bounds = blockState.getCollisionShape(level, blockPos).bounds().move(blockPos).inflate(10);
 
             if (!level.getEntitiesOfClass(HayGolem.class, bounds).isEmpty()) {
-                return EventResult.interruptFalse();
+                return InteractionResult.FAIL;
             }
 
-            return EventResult.pass();
+            return InteractionResult.PASS;
         });
     }
 

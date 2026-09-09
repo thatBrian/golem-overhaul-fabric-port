@@ -1,7 +1,7 @@
 package tech.alexnijjar.golemoverhaul.common.entities.goals;
 
 import net.minecraft.world.entity.ai.goal.Goal;
-import net.minecraft.world.entity.animal.Bee;
+import net.minecraft.world.entity.animal.bee.Bee;
 import org.jetbrains.annotations.Nullable;
 import tech.alexnijjar.golemoverhaul.common.entities.AdditionalBeeData;
 import tech.alexnijjar.golemoverhaul.common.entities.golems.HoneyGolem;

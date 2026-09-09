@@ -2,7 +2,7 @@ package tech.alexnijjar.golemoverhaul.common.entities.goals;
 
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.ai.goal.Goal;
-import net.minecraft.world.entity.animal.Bee;
+import net.minecraft.world.entity.animal.bee.Bee;
 import org.jetbrains.annotations.Nullable;
 import tech.alexnijjar.golemoverhaul.common.entities.AdditionalBeeData;
 import tech.alexnijjar.golemoverhaul.common.entities.golems.HoneyGolem;
@@ -27,7 +27,7 @@ public class GoToHoneyGolemHiveGoal extends Goal {
 
     @Override
     public boolean canUse() {
-        if (!bee.isAngry() && !bee.hasRestriction() && beeAccessor.invokeWantsToEnterHive()) {
+        if (!bee.isAngry() && !bee.hasHome() && beeAccessor.invokeWantsToEnterHive()) {
             HoneyGolem golem = hive == null ? this.findHive() : hive;
             return golem != null && !golem.isDeadOrDying() && golem.canPutBee();
         }

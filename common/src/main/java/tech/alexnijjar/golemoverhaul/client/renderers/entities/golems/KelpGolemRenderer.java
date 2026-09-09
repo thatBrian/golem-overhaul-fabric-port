@@ -1,56 +1,54 @@
 package tech.alexnijjar.golemoverhaul.client.renderers.entities.golems;
 
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.minecraft.client.renderer.LightTexture;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
+import com.geckolib.constant.DataTickets;
+import com.geckolib.renderer.base.BoneSnapshots;
+import com.geckolib.renderer.base.RenderPassInfo;
+import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
-import net.minecraft.client.renderer.texture.OverlayTexture;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.FastColor;
-import org.jetbrains.annotations.Nullable;
-import software.bernie.geckolib.cache.object.BakedGeoModel;
-import software.bernie.geckolib.cache.object.GeoBone;
-import software.bernie.geckolib.renderer.layer.AutoGlowingGeoLayer;
+import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.ARGB;
+import net.minecraft.util.Mth;
 import tech.alexnijjar.golemoverhaul.GolemOverhaul;
+import tech.alexnijjar.golemoverhaul.client.renderers.GolemRenderData;
 import tech.alexnijjar.golemoverhaul.client.renderers.entities.golems.base.BaseGolemModel;
 import tech.alexnijjar.golemoverhaul.client.renderers.entities.golems.base.BaseGolemRenderer;
+import tech.alexnijjar.golemoverhaul.client.renderers.entities.golems.layers.GolemGlowLayer;
 import tech.alexnijjar.golemoverhaul.common.entities.golems.KelpGolem;
 import tech.alexnijjar.golemoverhaul.common.registry.ModEntityTypes;
 
 public class KelpGolemRenderer extends BaseGolemRenderer<KelpGolem> {
 
-    public static final ResourceLocation GLOW = ResourceLocation.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "textures/entity/kelp/kelp_golem_glow.png");
+    public static final Identifier GLOW = Identifier.fromNamespaceAndPath(GolemOverhaul.MOD_ID, "textures/entity/kelp/kelp_golem_glow.png");
 
     public KelpGolemRenderer(EntityRendererProvider.Context renderManager) {
         super(renderManager, new BaseGolemModel<>(ModEntityTypes.KELP_GOLEM, true, 90));
 
-        addRenderLayer(new AutoGlowingGeoLayer<>(this) {
+        // The glow fades with health: the render colour (including alpha) is swapped in for this layer only.
+        withRenderLayer(new GolemGlowLayer<>(this, state -> GLOW) {
             @Override
-            protected RenderType getRenderType(KelpGolem animatable, @Nullable MultiBufferSource bufferSource) {
-                return RenderType.eyes(GLOW);
-            }
-
-            @Override
-            public void render(PoseStack poseStack, KelpGolem golem, BakedGeoModel bakedModel, @Nullable RenderType renderType, MultiBufferSource bufferSource, @Nullable VertexConsumer buffer, float partialTick, int packedLight, int packedOverlay) {
-                float percent = golem.getHealth() / golem.getMaxHealth();
-                int strength = (int) (percent * 255);
-                int color = FastColor.ARGB32.color(strength, strength, strength, strength);
-                renderType = getRenderType(animatable, bufferSource);
-                getRenderer().reRender(bakedModel, poseStack, bufferSource, animatable, renderType,
-                    bufferSource.getBuffer(renderType), partialTick, LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY,
-                    color
-                );
+            public void submitRenderTask(RenderPassInfo<LivingEntityRenderState> renderPassInfo, SubmitNodeCollector renderTasks) {
+                LivingEntityRenderState renderState = renderPassInfo.renderState();
+                int previousColor = renderPassInfo.renderColor();
+                int strength = Mth.clamp((int) (renderState.getOrDefaultGeckolibData(GolemRenderData.HEALTH_FRACTION, 1f) * 255), 0, 255);
+                renderState.addGeckolibData(DataTickets.RENDER_COLOR, ARGB.color(strength, strength, strength, strength));
+                super.submitRenderTask(renderPassInfo, renderTasks);
+                renderState.addGeckolibData(DataTickets.RENDER_COLOR, previousColor);
             }
         });
     }
 
     @Override
-    public void renderRecursively(PoseStack poseStack, KelpGolem golem, GeoBone bone, RenderType renderType, MultiBufferSource bufferSource, VertexConsumer buffer, boolean isReRender, float partialTick, int packedLight, int packedOverlay, int colour) {
-        if (("particle".equals(bone.getName()) || "particle2".equals(bone.getName())) && !golem.isCharged()) {
-            return;
-        }
-        super.renderRecursively(poseStack, golem, bone, renderType, bufferSource, buffer, isReRender, partialTick, packedLight, packedOverlay, colour);
+    protected void addGolemRenderData(KelpGolem golem, LivingEntityRenderState renderState, float partialTick) {
+        renderState.addGeckolibData(GolemRenderData.CHARGED, golem.isCharged());
+    }
+
+    // The swirling "particle" bones are only shown while conduit-charged.
+    @Override
+    public void adjustModelBonesForRender(RenderPassInfo<LivingEntityRenderState> renderPassInfo, BoneSnapshots snapshots) {
+        super.adjustModelBonesForRender(renderPassInfo, snapshots);
+        if (renderPassInfo.renderState().getOrDefaultGeckolibData(GolemRenderData.CHARGED, false)) return;
+        snapshots.ifPresent("particle", bone -> bone.skipRender(true).skipChildrenRender(true));
+        snapshots.ifPresent("particle2", bone -> bone.skipRender(true).skipChildrenRender(true));
     }
 }

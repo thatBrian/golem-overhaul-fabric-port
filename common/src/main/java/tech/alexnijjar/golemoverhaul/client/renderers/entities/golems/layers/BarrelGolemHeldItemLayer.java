@@ -1,46 +1,46 @@
 package tech.alexnijjar.golemoverhaul.client.renderers.entities.golems.layers;
 
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.math.Axis;
-import com.teamresourceful.resourcefullib.client.CloseablePoseStack;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.util.Mth;
+import com.geckolib.renderer.base.GeoRenderer;
+import com.geckolib.renderer.layer.builtin.BlockAndItemGeoLayer;
+import com.geckolib.util.RenderUtil;
+import net.minecraft.client.renderer.entity.EntityRendererProvider;
+import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
-import software.bernie.geckolib.cache.object.BakedGeoModel;
-import software.bernie.geckolib.cache.object.GeoBone;
-import software.bernie.geckolib.renderer.GeoRenderer;
-import software.bernie.geckolib.renderer.layer.GeoRenderLayer;
+import org.jetbrains.annotations.Nullable;
 import tech.alexnijjar.golemoverhaul.common.entities.golems.BarrelGolem;
 
-public class BarrelGolemHeldItemLayer extends GeoRenderLayer<BarrelGolem> {
+import java.util.List;
 
-    public BarrelGolemHeldItemLayer(GeoRenderer<BarrelGolem> entityRendererIn) {
-        super(entityRendererIn);
+/**
+ * Renders the emerald the barrel golem holds up while bartering, attached to the model's {@code item} bone.
+ * GeckoLib 5's per-bone rendering positions the item at the bone, so the manual body-yaw math upstream needed is gone.
+ */
+public class BarrelGolemHeldItemLayer extends BlockAndItemGeoLayer<BarrelGolem, Void, LivingEntityRenderState> {
+
+    private static final String ITEM_BONE = "item";
+
+    public BarrelGolemHeldItemLayer(EntityRendererProvider.Context context, GeoRenderer<BarrelGolem, Void, LivingEntityRenderState> renderer) {
+        super(context, renderer);
     }
 
     @Override
-    public void render(PoseStack poseStack, BarrelGolem golem, BakedGeoModel bakedModel, RenderType renderType, MultiBufferSource bufferSource, VertexConsumer buffer, float partialTick, int packedLight, int packedOverlay) {
-        if (!golem.isBartering() || golem.getBarteringTicks() < 34) return;
-        if (golem.isDeadOrDying()) return;
+    protected List<RenderData> getRelevantBones(BarrelGolem golem, @Nullable Void relatedObject, LivingEntityRenderState renderState, float partialTick) {
+        if (!golem.isBartering() || golem.getBarteringTicks() < 34) return List.of();
+        if (golem.isDeadOrDying()) return List.of();
         ItemStack stack = golem.getMainHandItem();
-        if (stack.isEmpty()) return;
+        if (stack.isEmpty()) return List.of();
 
-        GeoBone itemBone = getGeoModel().getBone("item").orElse(null);
-        if (itemBone == null) return;
+        ItemDisplayContext displayContext = ItemDisplayContext.FIRST_PERSON_RIGHT_HAND;
+        return List.of(RenderData.item(ITEM_BONE, displayContext,
+            RenderUtil.createRenderStateForItem(stack, this.itemModelResolver, displayContext, golem)));
+    }
 
-        float lerped = Mth.rotLerp(partialTick, golem.yBodyRotO, golem.yBodyRot);
-        try (var pose = new CloseablePoseStack(poseStack)) {
-            pose.mulPose(Axis.YP.rotationDegrees(180));
-            pose.mulPose(Axis.YP.rotationDegrees(-lerped));
-
-            pose.mulPose(itemBone.getModelRotationMatrix());
-
-
-            Minecraft.getInstance().getItemRenderer().renderStatic(golem, stack, ItemDisplayContext.FIRST_PERSON_RIGHT_HAND, false, pose, bufferSource, golem.level(), packedLight, packedOverlay, golem.getId());
+    @Override
+    public void addRenderData(BarrelGolem golem, @Nullable Void relatedObject, LivingEntityRenderState renderState, float partialTick) {
+        List<RenderData> contents = getRelevantBones(golem, relatedObject, renderState, partialTick);
+        if (!contents.isEmpty()) {
+            renderState.addGeckolibData(CONTENTS, contents);
         }
     }
 }

@@ -1,6 +1,13 @@
 package tech.alexnijjar.golemoverhaul.common.entities.golems.base;
 
-import net.minecraft.nbt.CompoundTag;
+import com.geckolib.animatable.GeoEntity;
+import com.geckolib.animatable.instance.AnimatableInstanceCache;
+import com.geckolib.animatable.manager.AnimatableManager;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.util.GeckoLibUtil;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.DifficultyInstance;
@@ -11,9 +18,9 @@ import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.goal.*;
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
-import net.minecraft.world.entity.animal.AbstractGolem;
-import net.minecraft.world.entity.animal.IronGolem;
-import net.minecraft.world.entity.animal.SnowGolem;
+import net.minecraft.world.entity.animal.golem.AbstractGolem;
+import net.minecraft.world.entity.animal.golem.IronGolem;
+import net.minecraft.world.entity.animal.golem.SnowGolem;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
@@ -22,15 +29,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
-import software.bernie.geckolib.animation.AnimatableManager;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.animation.PlayState;
-import software.bernie.geckolib.util.GeckoLibUtil;
 import tech.alexnijjar.golemoverhaul.common.constants.ConstantAnimations;
 
 public abstract class BaseGolem extends AbstractGolem implements GeoEntity {
@@ -42,7 +44,7 @@ public abstract class BaseGolem extends AbstractGolem implements GeoEntity {
     private final MeleeAttackGoal meleeAttackGoal = new MeleeAttackGoal(this, 1, true);
     private final HurtByTargetGoal hurtByTargetGoal = new HurtByTargetGoal(this, BaseGolem.class);
     private final NearestAttackableTargetGoal<Mob> attackTargetGoal = new NearestAttackableTargetGoal<>(this, Mob.class,
-            5, true, false, this::shouldAttack);
+            5, true, false, (target, level) -> this.shouldAttack(target));
 
     protected int attackAnimationTicks;
     protected int attackDelayTicks = -1;
@@ -67,31 +69,30 @@ public abstract class BaseGolem extends AbstractGolem implements GeoEntity {
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
         controllers.add(this.getMovementController());
 
-        controllers.add(new AnimationController<>(this, "attack_controller", 0, state -> {
+        controllers.add(new AnimationController<BaseGolem>("attack_controller", 0, state -> {
             if (!hasAttackAnimation())
                 return PlayState.STOP;
             if (attackAnimationTicks == 0) {
-                state.resetCurrentAnimation();
+                state.controller().reset();
                 return PlayState.STOP;
             }
             return getAttackAnimation(state);
         }));
     }
 
-    public AnimationController<?> getMovementController() {
-        return new AnimationController<>(this, this::handleMovementController);
+    public AnimationController<BaseGolem> getMovementController() {
+        return new AnimationController<>(this::handleMovementController);
     }
 
-    public PlayState handleMovementController(AnimationState<BaseGolem> state) {
-        boolean moving = state.getLimbSwingAmount() > 0.05 || state.getLimbSwingAmount() < -0.05;
-        return getMoveAnimation(state, moving);
+    public PlayState handleMovementController(AnimationTest<BaseGolem> state) {
+        return getMoveAnimation(state, state.isMoving());
     }
 
-    public PlayState getMoveAnimation(AnimationState<BaseGolem> state, boolean moving) {
+    public PlayState getMoveAnimation(AnimationTest<BaseGolem> state, boolean moving) {
         return state.setAndContinue(moving ? ConstantAnimations.WALK : ConstantAnimations.IDLE);
     }
 
-    public PlayState getAttackAnimation(AnimationState<? extends BaseGolem> state) {
+    public PlayState getAttackAnimation(AnimationTest<? extends BaseGolem> state) {
         return state.setAndContinue(ConstantAnimations.ATTACK);
     }
 
@@ -153,12 +154,12 @@ public abstract class BaseGolem extends AbstractGolem implements GeoEntity {
     }
 
     @Override
-    public boolean doHurtTarget(@NotNull Entity target) {
+    public boolean doHurtTarget(ServerLevel level, @NotNull Entity target) {
         if (isAttacking())
             return false;
         this.startAttacking();
         this.sendAttackEvent();
-        return hasDelayedAttack() || super.doHurtTarget(target);
+        return hasDelayedAttack() || super.doHurtTarget(level, target);
     }
 
     public void startAttacking() {
@@ -203,7 +204,9 @@ public abstract class BaseGolem extends AbstractGolem implements GeoEntity {
     }
 
     public void actuallyAttackAfterDelay(LivingEntity target) {
-        super.doHurtTarget(target);
+        if (level() instanceof ServerLevel serverLevel) {
+            super.doHurtTarget(serverLevel, target);
+        }
     }
 
     public void performAdditionalAttacks(LivingEntity target) {
@@ -276,7 +279,7 @@ public abstract class BaseGolem extends AbstractGolem implements GeoEntity {
         float pitch = 1 + (this.random.nextFloat() - this.random.nextFloat()) * 0.2f;
         this.playSound(getRepairSound(), 1, pitch);
         stack.consume(1, player);
-        return InteractionResult.sidedSuccess(this.level().isClientSide());
+        return InteractionResult.SUCCESS;
     }
 
     public boolean isPlayerCreated() {
@@ -292,22 +295,18 @@ public abstract class BaseGolem extends AbstractGolem implements GeoEntity {
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
+    protected void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
         if (this.needsToPersistPlayerCreatedFlag()) {
-            compound.putBoolean("PlayerCreated", this.isPlayerCreated);
+            output.putBoolean("PlayerCreated", this.isPlayerCreated);
         }
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
+    protected void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
         if (this.needsToPersistPlayerCreatedFlag()) {
-            if (compound.contains("PlayerCreated")) {
-                this.isPlayerCreated = compound.getBoolean("PlayerCreated");
-            } else {
-                this.isPlayerCreated = false;
-            }
+            this.isPlayerCreated = input.getBooleanOr("PlayerCreated", false);
         }
         this.updateAttackGoals();
     }
@@ -315,9 +314,9 @@ public abstract class BaseGolem extends AbstractGolem implements GeoEntity {
     @Nullable
     @Override
     public SpawnGroupData finalizeSpawn(ServerLevelAccessor serverLevelAccessor, DifficultyInstance difficultyInstance,
-                                        MobSpawnType mobSpawnType, @Nullable SpawnGroupData spawnGroupData) {
+                                        EntitySpawnReason spawnReason, @Nullable SpawnGroupData spawnGroupData) {
         this.updateAttackGoals();
-        return super.finalizeSpawn(serverLevelAccessor, difficultyInstance, mobSpawnType, spawnGroupData);
+        return super.finalizeSpawn(serverLevelAccessor, difficultyInstance, spawnReason, spawnGroupData);
     }
 
     @Override

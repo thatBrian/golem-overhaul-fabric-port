@@ -25,6 +25,7 @@ public class GolemOverhaul {
         ModParticleTypes.PARTICLE_TYPES.init();
         ModSoundEvents.SOUND_EVENTS.init();
         ModRecipeTypes.RECIPE_TYPES.init();
+        ModRecipeTypes.RECIPE_BOOK_CATEGORIES.init();
         ModRecipeSerializers.RECIPE_SERIALIZERS.init();
         ModEvents.init();
 

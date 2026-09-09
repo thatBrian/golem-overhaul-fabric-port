@@ -1,11 +1,12 @@
 package tech.alexnijjar.golemoverhaul.mixins.common;
 
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.ai.goal.target.TargetGoal;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
-import net.minecraft.world.entity.animal.IronGolem;
+import net.minecraft.world.entity.animal.golem.IronGolem;
 import net.minecraft.world.phys.AABB;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
@@ -43,9 +44,8 @@ public abstract class NearestAttackableTargetGoalMixin<T extends LivingEntity> e
         at = @At("TAIL")
     )
     private void golemoverhaul$findTarget(CallbackInfo ci) {
-        if (this.targetType == IronGolem.class && target == null) {
-            this.target = this.mob
-                .level()
+        if (this.targetType == IronGolem.class && target == null && this.mob.level() instanceof ServerLevel serverLevel) {
+            this.target = serverLevel
                 .getNearestEntity(
                     this.mob.level().getEntities(this.mob, this.getTargetSearchArea(this.getFollowDistance()),
                             entity -> entity instanceof BaseGolem golem && golem.canTarget())

@@ -1,11 +1,12 @@
 package tech.alexnijjar.golemoverhaul.common.entities.projectiles;
 
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.projectile.ThrowableItemProjectile;
+import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrowableItemProjectile;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
@@ -31,9 +32,11 @@ public class CandleFlameProjectile extends ThrowableItemProjectile {
         super.onHitEntity(result);
         Entity entity = result.getEntity();
         if (entity instanceof CandleGolem) return;
-        if (result.getEntity() instanceof TerracottaGolem) return;
-        entity.hurt(damageSources().thrown(this, getOwner()), 3);
-        entity.igniteForSeconds(5);
+        if (entity instanceof TerracottaGolem) return;
+        if (level() instanceof ServerLevel serverLevel) {
+            entity.hurtServer(serverLevel, damageSources().thrown(this, getOwner()), 3);
+            entity.igniteForSeconds(5);
+        }
     }
 
     @Override
@@ -53,11 +56,6 @@ public class CandleFlameProjectile extends ThrowableItemProjectile {
     @Override
     public boolean isNoGravity() {
         return true;
-    }
-
-    @Override
-    protected double getDefaultGravity() {
-        return super.getDefaultGravity();
     }
 
     @Override

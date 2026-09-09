@@ -1,17 +1,21 @@
 {
   "schemaVersion": 1,
-  "id": "$mod_id",
-  "version": "$version",
-  "name": "Golem Overhaul",
-  "description": "Golem overhaul adds awesome Golems!",
+  "id": "${mod_id}",
+  "version": "${mod_version}",
+  "name": "${mod_name}",
+  "description": "Golem Overhaul adds 9 new golem types, all with their own unique mechanics! Unofficial Fabric port for Minecraft 26.1.x — original mod by Bonsai Studios.",
   "authors": [
     "Alex Nijjar",
     "Joosh",
     "3xpl01t"
   ],
+  "contributors": [
+    "thatBrian (unofficial 26.1.x Fabric port)"
+  ],
   "contact": {
-    "sources": "https://github.com/bonsaistudi0s/golem-overhaul",
-    "issues": "https://github.com/bonsaistudi0s/golem-overhaul/issues"
+    "homepage": "https://modrinth.com/mod/golem-overhaul",
+    "sources": "https://github.com/thatBrian/golem-overhaul-fabric-port",
+    "issues": "https://github.com/thatBrian/golem-overhaul-fabric-port/issues"
   },
   "license": "ARR",
   "icon": "icon.png",
@@ -19,44 +23,25 @@
   "entrypoints": {
     "main": [
       "tech.alexnijjar.golemoverhaul.fabric.GolemOverhaulFabric"
-    ],
-    "jei_mod_plugin": [
-      "tech.alexnijjar.golemoverhaul.client.compat.jei.GolemOverhaulJeiPlugin"
-    ],
-    "rei_client": [
-      "tech.alexnijjar.golemoverhaul.client.compat.rei.GolemOverhaulReiPlugin"
     ]
   },
   "mixins": [
     "golemoverhaul.mixins.json"
   ],
   "depends": {
-    "fabricloader": ">=0.18.1",
-    "minecraft": "=$minecraft_version",
-    "java": ">=21",
-    "architectury": ">=$architectury_api_version",
-    "fabric-api": "*",
-    "resourcefullib": ">=$resourcefullib_version",
-    "resourcefulconfig": ">=$resourcefulconfig_version",
-    "geckolib": ">=$geckolib_version"
+    "fabricloader": "${fabric_loader_version_range}",
+    "minecraft": "${minecraft_version_range}",
+    "java": ">=${java_version}",
+    "fabric-api": "${fabric_api_version_range}",
+    "architectury": ">=${architectury_api_version}",
+    "resourcefullib": ">=${resourcefullib_version}",
+    "resourcefulconfig": ">=${resourcefulconfig_version}",
+    "geckolib": ">=${geckolib_version}"
   },
   "suggests": {
-    "modmenu": "*",
-    "jei": ">=$jei_version",
-    "rei": ">=$rei_version"
+    "modmenu": "*"
   },
   "custom": {
-    "mc-publish": {
-      "dependencies": [
-        "architectury#(ignore)",
-        "architectury-api@>=$architectury_api_version(required)",
-        "resourcefullib#(ignore)",
-        "resourceful-lib@>=$resourcefullib_version(required)",
-        "resourcefulconfig#(ignore)",
-        "resourceful-config@>=$resourcefulconfig_version(required)",
-        "rei@>=$rei_version(optional)#(ignore:curseforge)",
-        "roughly-enough-items@>=$rei_version(optional)#(ignore:modrinth)"
-      ]
-    }
+    "golemoverhaul:upstream": "https://github.com/bonsaistudi0s/Golem-Overhaul (1.21.1/main, tag 1.1.1)"
   }
 }

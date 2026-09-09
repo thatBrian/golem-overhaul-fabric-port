@@ -1,8 +1,12 @@
 package tech.alexnijjar.golemoverhaul.common.entities.golems;
 
+import com.geckolib.animatable.manager.AnimatableManager;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.state.AnimationTest;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.core.particles.ParticleTypes;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -19,7 +23,7 @@ import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.LeapAtTargetGoal;
-import net.minecraft.world.entity.animal.AbstractGolem;
+import net.minecraft.world.entity.animal.golem.AbstractGolem;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
@@ -30,14 +34,12 @@ import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.pathfinder.PathType;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import software.bernie.geckolib.animation.AnimatableManager;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.animation.PlayState;
 import tech.alexnijjar.golemoverhaul.common.config.GolemOverhaulConfig;
 import tech.alexnijjar.golemoverhaul.common.constants.ConstantAnimations;
 import tech.alexnijjar.golemoverhaul.common.entities.golems.base.BaseGolem;
@@ -67,8 +69,8 @@ public class CoalGolem extends BaseGolem {
         super(type, level, true, GolemOverhaulConfig.allowSpawning && GolemOverhaulConfig.spawnCoalGolems);
         this.xpReward = 1;
         this.setPathfindingMalus(PathType.LAVA, 0);
-        this.setPathfindingMalus(PathType.DANGER_FIRE, 0);
-        this.setPathfindingMalus(PathType.DAMAGE_FIRE, 0);
+        this.setPathfindingMalus(PathType.FIRE_IN_NEIGHBOR, 0);
+        this.setPathfindingMalus(PathType.FIRE, 0);
     }
 
     public static AttributeSupplier.Builder createAttributes() {
@@ -79,27 +81,27 @@ public class CoalGolem extends BaseGolem {
     }
 
     public static boolean checkMobSpawnRules(EntityType<? extends Mob> type, LevelAccessor level,
-                                             MobSpawnType spawnType, BlockPos pos, RandomSource random) {
+                                             EntitySpawnReason spawnReason, BlockPos pos, RandomSource random) {
         if (!GolemOverhaulConfig.spawnCoalGolems || !GolemOverhaulConfig.allowSpawning) return false;
         if (level.getBiome(pos).is(Biomes.DEEP_DARK)) return false;
         return !(pos.getY() >= level.getSeaLevel()) &&
                 !level.getBlockState(pos.below()).is(Blocks.GRASS_BLOCK) &&
-                Mob.checkMobSpawnRules(type, level, spawnType, pos, random);
+                Mob.checkMobSpawnRules(type, level, spawnReason, pos, random);
     }
 
     @Override
     public void registerControllers(AnimatableManager.ControllerRegistrar controllers) {
         super.registerControllers(controllers);
 
-        controllers.add(new AnimationController<>(this, "death_controller", 5, state -> {
+        controllers.add(new AnimationController<CoalGolem>("death_controller", 5, state -> {
             if (deathTime == 0) return PlayState.STOP;
             return state.setAndContinue(ConstantAnimations.DIE);
         }));
     }
 
     @Override
-    public PlayState getMoveAnimation(AnimationState<BaseGolem> state, boolean moving) {
-        state.getController().setAnimationSpeed(animationSpeed);
+    public PlayState getMoveAnimation(AnimationTest<BaseGolem> state, boolean moving) {
+        state.controller().setAnimationSpeed(animationSpeed);
 
         if (this.isBeingThrown() || (!this.onGround() && getDeltaMovement().y <= -0.5)) {
             return state.setAndContinue(ConstantAnimations.FALL);
@@ -116,17 +118,17 @@ public class CoalGolem extends BaseGolem {
     }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag compound) {
-        super.addAdditionalSaveData(compound);
-        compound.putBoolean("Lit", this.isLit());
-        if (summonerId != null) compound.putUUID("SummonerId", summonerId);
+    protected void addAdditionalSaveData(ValueOutput output) {
+        super.addAdditionalSaveData(output);
+        output.putBoolean("Lit", this.isLit());
+        if (summonerId != null) output.store("SummonerId", UUIDUtil.CODEC, summonerId);
     }
 
     @Override
-    public void readAdditionalSaveData(CompoundTag compound) {
-        super.readAdditionalSaveData(compound);
-        this.setLit(compound.getBoolean("Lit"));
-        if (compound.hasUUID("SummonerId")) this.setSummoner(compound.getUUID("SummonerId"));
+    protected void readAdditionalSaveData(ValueInput input) {
+        super.readAdditionalSaveData(input);
+        this.setLit(input.getBooleanOr("Lit", false));
+        input.read("SummonerId", UUIDUtil.CODEC).ifPresent(this::setSummoner);
     }
 
     @Override
@@ -215,7 +217,7 @@ public class CoalGolem extends BaseGolem {
     }
 
     @Override
-    public boolean hurt(DamageSource source, float amount) {
+    public boolean hurtServer(ServerLevel level, DamageSource source, float amount) {
         if (isBeingThrown() && source.is(DamageTypeTags.IS_FALL)) {
             return false;
         }
@@ -224,7 +226,7 @@ public class CoalGolem extends BaseGolem {
             setLit(true);
         }
 
-        return super.hurt(source, amount);
+        return super.hurtServer(level, source, amount);
     }
 
     @Override
@@ -264,17 +266,17 @@ public class CoalGolem extends BaseGolem {
     }
 
     @Override
-    public boolean doHurtTarget(@NotNull Entity target) {
-        if (super.doHurtTarget(target)) {
-            if (isLit() && !level().isClientSide()) {
+    public boolean doHurtTarget(ServerLevel level, @NotNull Entity target) {
+        if (super.doHurtTarget(level, target)) {
+            if (isLit()) {
                 target.igniteForSeconds(5);
-                kill();
+                kill(level);
                 deathTime = 10;
 
                 playSound(ModSoundEvents.COAL_GOLEM_EXPLODE.get());
 
                 for (int i = 0; i < 10; i++) {
-                    ModUtils.sendParticles((ServerLevel) level(), ParticleTypes.FLAME,
+                    ModUtils.sendParticles(level, ParticleTypes.FLAME,
                             getX() + random.nextGaussian() * 0.3,
                             getY() + 0.5 + random.nextGaussian() * 0.3,
                             getZ() + random.nextGaussian() * 0.3,
@@ -290,7 +292,7 @@ public class CoalGolem extends BaseGolem {
     public void tick() {
         if (level() instanceof ServerLevel level) {
             if (tickCount > MAX_SUMMON_TICKS && isSummoned()) {
-                kill();
+                kill(level);
                 playSound(ModSoundEvents.COAL_GOLEM_EXPLODE.get());
             }
             if (summonerId != null) {
@@ -303,7 +305,7 @@ public class CoalGolem extends BaseGolem {
             // By default, a non-projectile entity will not have velocity client-sided before the first move update
             // from the server (happens usually after 4 ticks), this "hack" makes it update immediately
             if (this.isBeingThrown() && this.firstTick) {
-                this.hasImpulse = true;
+                this.needsSync = true;
             }
 
             if (this.isBeingThrown() && this.onGround()) {
@@ -312,7 +314,7 @@ public class CoalGolem extends BaseGolem {
                 // When falling into blocks with no collision like grass, sometimes they would stop midair 1 block
                 // above the ground on the client-side, this fixes it by forcing another motion update
                 this.setDeltaMovement(this.getDeltaMovement().x, 0, this.getDeltaMovement().z);
-                this.hasImpulse = true;
+                this.needsSync = true;
             }
         }
 
@@ -332,7 +334,7 @@ public class CoalGolem extends BaseGolem {
             }
         } else {
             if (stack.is(Items.FLINT_AND_STEEL)) {
-                stack.hurtAndBreak(1, player, getSlotForHand(hand));
+                stack.hurtAndBreak(1, player, hand);
                 playSound(SoundEvents.FLINTANDSTEEL_USE);
                 setLit(true);
                 return InteractionResult.SUCCESS;
@@ -348,8 +350,8 @@ public class CoalGolem extends BaseGolem {
     }
 
     @Override
-    protected AABB getAttackBoundingBox() {
-        return super.getAttackBoundingBox().inflate(1, 0, 1);
+    protected AABB getAttackBoundingBox(double horizontalExpansion) {
+        return super.getAttackBoundingBox(horizontalExpansion).inflate(1, 0, 1);
     }
 
     // Taken from Projectile.class (26.1-snapshot-1)
