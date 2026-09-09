@@ -11,7 +11,7 @@ import tech.alexnijjar.golemoverhaul.common.entities.golems.base.BaseGolem;
 
 /**
  * Model paths follow GeckoLib 5's defaulted layout: {@code <ns>:entity/<name>} resolves to
- * {@code geo/entity/<name>.geo.json} and {@code animations/entity/<name>.animation.json}; textures are full paths.
+ * {@code geckolib/models/entity/<name>.geo.json} and {@code geckolib/animations/entity/<name>.animation.json} (GeckoLib 5 folder layout); textures are full paths.
  */
 public class BaseGolemModel<T extends BaseGolem> extends GeoModel<T> {
 
